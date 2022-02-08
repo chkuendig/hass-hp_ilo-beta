@@ -24,7 +24,7 @@ These all return slightly different data, but none seems to include all the info
 
 
 # Configuration
-**Status: WIP ⏳ **
+**Status: WIP ⏳ ** 
 
 The goal is to implement a clean config flow supporting a few things:
 - Regular setup flow for discovered devices as well as a manual setup flow.
@@ -34,6 +34,7 @@ The goal is to implement a clean config flow supporting a few things:
 
 
 # Platforms
+**Status: WIP ⏳ *
 The existing sensors only implement the sensor entity. Ideally a few more things would be nice:
 - Automatically generate all supported entities automatically. 
 - Device entity with as much information as possile about the system configuration
@@ -43,6 +44,11 @@ https://seveas.github.io/python-hpilo/firmware.html) and [reboots/restarts](http
 - Switches for Power on/Off
 - Fan entities for fans
 There's already a few PRs to improve on this:  https://github.com/home-assistant/core/pull/65900,  https://github.com/home-assistant/core/pull/32209
+
+
+# Caching 
+*Status: Planned 🔜 *
+Startup and refresh is currently not optimized, slowing this integration down quite a bit.
 
 # Tests
 **Status: Planned 🔜 **
