@@ -6,7 +6,10 @@ import logging
 
 import hpilo
 import voluptuous as vol
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 
+from homeassistant.helpers import  template
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
 from homeassistant.const import (
     CONF_HOST,
@@ -18,14 +21,24 @@ from homeassistant.const import (
     CONF_UNIT_OF_MEASUREMENT,
     CONF_USERNAME,
     CONF_VALUE_TEMPLATE,
+    DEVICE_CLASS_BATTERY,
+    DEVICE_CLASS_TEMPERATURE,
+    PERCENTAGE,TEMP_CELSIUS,TIME_SECONDS
 )
+from homeassistant.const import (
+    Platform, CONF_HOST, CONF_MAC, CONF_NAME, CONF_TIMEOUT, CONF_TYPE, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD)
+from homeassistant.helpers.device_registry import  DeviceEntryType, CONNECTION_UPNP
+
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import Throttle
 
+DOMAIN = "hp_ilo"
 _LOGGER = logging.getLogger(__name__)
+
 
 DEFAULT_NAME = "HP ILO"
 DEFAULT_PORT = 443
@@ -108,7 +121,7 @@ def setup_platform(
 
     add_entities(devices, True)
 
-
+ 
 class HpIloSensor(SensorEntity):
     """Representation of a HP iLO sensor."""
 
@@ -187,6 +200,7 @@ class HpIloData:
 
         self.update()
 
+    # TODO: Check if this used to work for caching - it clearly isn't working (hpilo.Ilo will request the data on demand)
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     def update(self):
         """Get the latest data from HP iLO."""
@@ -203,3 +217,191 @@ class HpIloData:
             hpilo.IloLoginFailed,
         ) as error:
             raise ValueError(f"Unable to init HP ILO, {error}") from error
+
+
+
+'''
+Setup device and sensor entities for a config entry
+'''
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+
+   
+    # Create a data fetcher to support all of the configured sensors. Then make
+    # the first call to init the data and confirm we can connect.
+    try:
+        hp_ilo_data = HpIloData(entry.data['host'], DEFAULT_PORT,  entry.data['username'],  entry.data['password']) # TODO: entry.data['port'] is garbage / set to 80
+    except ValueError as error:
+        _LOGGER.error(error)
+        return
+
+    # config flow sets this to either UUID, serial number or None
+    if (unique_id := entry.unique_id) is None:
+        unique_id = entry.entry_id
+
+    device_name = entry.data['name']
+    configuration_url = entry.data['protocol'] + "://"+entry.data['host']+":"+str(entry.data['port'])
+
+    connections= {(CONNECTION_UPNP,unique_id)} #TODO: This is probably the wrong identifier
+    identifiers={(DOMAIN, unique_id)} #TODO: This is probably the wrong identifier
+    device_info = DeviceInfo(
+        unique_id=unique_id,  #this should come from the bios values, not config ( or config needs to get it from there and set it correctly)
+        name=device_name,
+        manufacturer="Hewlett Packard Enterprise", 
+        configuration_url=configuration_url, 
+        connections=connections, 
+        identifiers=identifiers) #TODO: we can probably fill more here if we had proper config data
+
+    sensors: list[SensorEntity] = []
+
+    for sensor_type in SENSOR_TYPES: #these should be configurable in integration config options
+            ilo_function = SENSOR_TYPES[sensor_type][1]
+            sensor_type_name = SENSOR_TYPES[sensor_type][0]
+            try:
+                sensor_data = getattr(hp_ilo_data.data,ilo_function )()
+            except hpilo.IloNotARackServer as error:
+                _LOGGER.info("%s cant be loaded: %s",SENSOR_TYPES[sensor_type][0],error)
+                continue
+            except hpilo.IloFeatureNotSupported as error:
+                _LOGGER.info("%s cant be loaded: %s",SENSOR_TYPES[sensor_type][0],error)
+                continue
+            if sensor_type == "server_health":
+                for health_value_keys in sensor_data:
+                    if(health_value_keys == 'temperature'):
+                        for temperature_sensor in sensor_data[health_value_keys].values():
+                            if temperature_sensor['status'] != 'Not Installed':
+                                _LOGGER.info("Adding sensor for Temperature Sensor %s",temperature_sensor['label'])
+                                new_sensor = HpIloDeviceSensor(
+                                    hass=hass,
+                                    hp_ilo_data=hp_ilo_data,
+                                    sensor_name=temperature_sensor['label'],
+                                    sensor_type=sensor_type,
+                                    sensor_value_template=template.Template('{{ ilo_data.temperature["'+temperature_sensor['label']+'"].currentreading[0] }}'),
+                                    unit_of_measurement=TEMP_CELSIUS,
+                                    # TODO: add device class and state_class
+                                    entry=entry,
+                                    device_info=device_info
+                                )
+                                new_sensor._attr_device_class =DEVICE_CLASS_TEMPERATURE
+                                sensors.append(new_sensor )
+                    if(health_value_keys == 'fans'):
+                        for fan_sensor in sensor_data[health_value_keys].values():
+                            _LOGGER.info("Adding sensor for Fan %s ",fan_sensor['label'])
+                            new_sensor = HpIloDeviceSensor(
+                                    hass=hass,
+                                    hp_ilo_data=hp_ilo_data,
+                                    sensor_name=fan_sensor['label'],
+                                    sensor_type=sensor_type,
+                                    sensor_value_template=template.Template('{{ ilo_data.fans["'+fan_sensor['label']+'"].speed[0] }}'),
+                                    unit_of_measurement=PERCENTAGE,
+                                    # TODO: add device class and state_class
+                                    entry=entry,
+                                    device_info=device_info
+                                )
+                            new_sensor._attr_icon = "mdi:fan"
+                            sensors.append(new_sensor )
+                    
+                    else:
+                        
+                        if(health_value_keys == 'firmware_information'):
+                            device_info['sw_version'] = sensor_data[health_value_keys]['iLO']
+                        _LOGGER.info("%s: %s not yet supported data",sensor_type_name,health_value_keys)
+            elif sensor_type == "server_power_on_time":
+                _LOGGER.info("Adding sensor for %s", sensor_type_name)
+                new_sensor = HpIloDeviceSensor(
+                            hass=hass,
+                            hp_ilo_data=hp_ilo_data,
+                            sensor_name=sensor_type_name,
+                            sensor_type=sensor_type,
+                            sensor_value_template=template.Template('{{ ilo_data }}'),
+                            unit_of_measurement=TIME_SECONDS,
+                            # TODO: add device class and state_class
+                            entry=entry,
+                            device_info=device_info
+                        )
+                sensors.append(new_sensor )
+            elif sensor_type == "server_power_status":
+                _LOGGER.info("Adding sensor for %s", sensor_type_name)
+                new_sensor = HpIloDeviceSensor(
+                    hass=hass,
+                    hp_ilo_data=hp_ilo_data,
+                    sensor_name=sensor_type_name,
+                    sensor_type=sensor_type,
+                    sensor_value_template=template.Template('{{ ilo_data}}'),
+                    unit_of_measurement=None,
+                    # TODO: add device class and state_class
+                    entry=entry,
+                    device_info=device_info
+                )
+                new_sensor._attr_device_class =BinarySensorDeviceClass.POWER
+                #TODO: This should use a real binary sensor entity
+                sensors.append(new_sensor )
+            elif sensor_type == "server_host_data":
+                # SMBIOS Entries
+                for smbios_value in sensor_data:
+                    if smbios_value['type'] == 0: # BIOS Information 
+                        device_info['hw_version'] = smbios_value['Family'] + " " +smbios_value[ 'Date']
+                    if smbios_value['type'] == 1: # System Information 
+                        device_info['model'] = smbios_value['Product Name']
+                    if smbios_value['type'] == 4: # 	Processor Information 
+                        pass # not sure what to do with this info
+                    if smbios_value['type'] == 17: # 	Memory Device 
+                        pass # not sure what to do with this info
+
+            else:
+                _LOGGER.warn("Automatic config for %s not yet implemented. Values: %s", sensor_type_name,sensor_data)
+    async_add_entities(sensors, True)
+
+
+class HpIloDeviceSensor(HpIloSensor):
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        hp_ilo_data,
+        sensor_type,
+        sensor_name,
+        sensor_value_template:template.Template,
+        unit_of_measurement,
+        entry: ConfigEntry,
+        device_info: DeviceInfo
+    ) -> None:
+        """Initialize the HpIlo entity."""
+        super().__init__(  
+            hass,
+            hp_ilo_data,
+            sensor_type,
+            sensor_name,
+            sensor_value_template,
+            unit_of_measurement)
+        self._device_id = entry.data['unique_id']
+        self._entry_id = entry.entry_id
+        self._device_info = device_info
+        
+        self._attr_unique_id = f"{entry.data['unique_id']}_{sensor_name}"
+    
+    
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Return device information about this IPP device."""
+        if self._device_id is None:
+            raise "no device_id"
+        return self._device_info
+
+    # TODO: What is this good for? could we add some of the additional firmware/smbios info?
+    @property
+    def extra_state_attributes(self) -> dict[str, any] | None:
+        """Return the state attributes of the entity."""
+        return {}
+        return {
+            ATTR_INFO: self.coordinator.data.info.printer_info,
+            ATTR_SERIAL: self.coordinator.data.info.serial,
+            ATTR_LOCATION: self.coordinator.data.info.location,
+            ATTR_STATE_MESSAGE: self.coordinator.data.state.message,
+            ATTR_STATE_REASON: self.coordinator.data.state.reasons,
+            ATTR_COMMAND_SET: self.coordinator.data.info.command_set,
+            ATTR_URI_SUPPORTED: self.coordinator.data.info.printer_uri_supported,
+        }
