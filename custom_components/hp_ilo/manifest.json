@@ -2,6 +2,7 @@
     "domain": "hp_ilo",
     "name": "HP Integrated Lights-Out (ILO)",
     "documentation": "https://www.home-assistant.io/integrations/hp_ilo",
+    "version": "0.1.0",
     "requirements": ["python-hpilo==4.4.3"],
     "codeowners": ["@chkuendig"],
     "config_flow": true,
