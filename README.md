@@ -1,14 +1,18 @@
-# Notice
+# Notice 🚧
 
-This is a WIP component for an updated HP Integrated Lights-Out (ILO) component in Home Assistant.  The goal is to add a proper config flow with discovery and expose as much of the functonality of ILO as possible.
+This is a WIP component for an updated **HP Integrated Lights-Out (ILO)** component in Home Assistant.  The goal is to add a proper config flow with discovery and expose as much of the functonality of ILO as possible.
 
 There's still a lot from `custom-components/integration_blueprint` in this repo to keep track of a few missing things. It will eventually be cleaned up.
+
+# Installation
+Add this repo as a custom repo to HACS and the integration should show up. At the moment there's no versioning of releases yet.
 
 # Features
 
 ## Discovery
-**Status: Done ✅ **
-For Auto Discovery to work, it has to be enabled: 
+**Status: Done ✅**
+
+For Auto Discovery to work, it has to be enabled in the iLO admin UI: 
 ![ILO Screenshot](/screenshot_ilo_discovery.png?raw=true )
 
 For development & testing it also makes sense to set the interval low enough (default seems to be 10min)
@@ -20,11 +24,13 @@ Basic:1.0 Device Definition](http://upnp.org/specs/basic/UPnP-basic-Basic-v1-Dev
 * `urn:dmtf-org:service:redfish-rest:1` with details at `https://[IP]/redfish/v1/` (this implements the [DMTF’s Redfish Standard](https://www.dmtf.org/standards/redfish)). See also https://stackoverflow.com/a/39153603 and https://hewlettpackard.github.io/ilo-rest-api-docs/ilo5/?shell#introduction. This could be added to Home Assistant with [python-redfish-library](https://pypi.org/project/redfish/  ) 
 * `urn:www-hp-com:service:Federation:2` - not clear where the details for this will end up at. I also didn't look into the underlying standard.
 
-These all return slightly different data, but none seems to include all the information necessary. Basic Device seems to be the one most common and is already supported by Home Assistant, so I picked that.
+These all return slightly different data, but none seems to include all the information necessary (i.e. the correct UUID or the port/protocol of the REST api ).
+
+Basic Device seems to be the one most common and is already supported by Home Assistant, so I picked that.
 
 
-# Configuration
-**Status: WIP ⏳ ** 
+## Configuration
+**Status: WIP ⏳** 
 
 The goal is to implement a clean config flow supporting a few things:
 - Regular setup flow for discovered devices as well as a manual setup flow.
@@ -33,8 +39,17 @@ The goal is to implement a clean config flow supporting a few things:
 - It should be possible to enable/disable what sensors and other entities/platforms are added. (since this can quickly get out of hand)
 
 
-# Platforms
-**Status: WIP ⏳ *
+## Platforms
+**Status: WIP ⏳**
+
+**This component will set up the following platforms.**
+
+Platform | Description
+-- | --
+`binary_sensor` | Show something `True` or `False`.
+`sensor` | Show info from blueprint API.
+`switch` | Switch something `True` or `False`.
+
 The existing sensors only implement the sensor entity. Ideally a few more things would be nice:
 - Automatically generate all supported entities automatically. 
 - Device entity with as much information as possile about the system configuration
@@ -46,17 +61,20 @@ https://seveas.github.io/python-hpilo/firmware.html) and [reboots/restarts](http
 There's already a few PRs to improve on this:  https://github.com/home-assistant/core/pull/65900,  https://github.com/home-assistant/core/pull/32209
 
 
-# Caching 
-*Status: Planned 🔜 *
-Startup and refresh is currently not optimized, slowing this integration down quite a bit.
+## Caching 
+**Status: Planned 🔜**
 
-# Tests
-**Status: Planned 🔜 **
+Startup and refresh is currently not optimized, slowing this integration down quite a bit. It also seems that data isn't shared between sensors, meaning the rate limiting is resulting in very coarse grained data once there's more then a handful of sensors active.
+
+## Tests
+**Status: Planned 🔜**
+
 There's actually no tests at all in Home Assistant for this component right now.
 Most features should be able to be tested with the existing mock data in `python-hpilo`. 
 
-# Strings and Translations
-**Status: Planned 🔜 **
+## Strings and Translations
+**Status: Planned 🔜**
+
 Config flow should support i18n. 
 
 # integration_blueprint
@@ -73,13 +91,3 @@ Config flow should support i18n.
 [![Community Forum][forum-shield]][forum]
 
 _Component to integrate with [hp_ilo][hp_ilo]._
-
-**This component will set up the following platforms.**
-
-Platform | Description
--- | --
-`binary_sensor` | Show something `True` or `False`.
-`sensor` | Show info from blueprint API.
-`switch` | Switch something `True` or `False`.
-
-![example][exampleimg]
