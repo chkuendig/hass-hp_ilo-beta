@@ -10,8 +10,22 @@ from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 
 from homeassistant.helpers import  template
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
+from homeassistant.components.sensor import (
+    CONF_STATE_CLASS,
+    DEVICE_CLASSES_SCHEMA,
+    PLATFORM_SCHEMA,
+    STATE_CLASSES_SCHEMA,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 from homeassistant.const import (
+    CONF_DEVICE_CLASS,
     CONF_HOST,
     CONF_MONITORED_VARIABLES,
     CONF_NAME,
@@ -21,13 +35,15 @@ from homeassistant.const import (
     CONF_UNIT_OF_MEASUREMENT,
     CONF_USERNAME,
     CONF_VALUE_TEMPLATE,
-    DEVICE_CLASS_BATTERY,
-    DEVICE_CLASS_TEMPERATURE,
     PERCENTAGE,TEMP_CELSIUS,TIME_SECONDS
 )
 from homeassistant.const import (
-    Platform, CONF_HOST, CONF_MAC, CONF_NAME, CONF_TIMEOUT, CONF_TYPE, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD)
-from homeassistant.helpers.device_registry import  DeviceEntryType, CONNECTION_UPNP
+    CONF_HOST, 
+    CONF_NAME, 
+    CONF_PORT, 
+    CONF_USERNAME, 
+    CONF_PASSWORD)
+from homeassistant.helpers.device_registry import CONNECTION_UPNP
 
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
@@ -75,6 +91,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
                         ),
                         vol.Optional(CONF_UNIT_OF_MEASUREMENT): cv.string,
                         vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
+                        vol.Optional(CONF_DEVICE_CLASS): DEVICE_CLASSES_SCHEMA,
+                        vol.Optional(CONF_STATE_CLASS): STATE_CLASSES_SCHEMA,
                     }
                 )
             ],
@@ -116,6 +134,8 @@ def setup_platform(
             sensor_type=monitored_variable[CONF_SENSOR_TYPE],
             sensor_value_template=monitored_variable.get(CONF_VALUE_TEMPLATE),
             unit_of_measurement=monitored_variable.get(CONF_UNIT_OF_MEASUREMENT),
+            device_class=monitored_variable.get(CONF_DEVICE_CLASS),
+            state_class=monitored_variable.get(CONF_STATE_CLASS),
         )
         devices.append(new_device)
 
@@ -133,11 +153,15 @@ class HpIloSensor(SensorEntity):
         sensor_name,
         sensor_value_template,
         unit_of_measurement,
+        device_class,
+        state_class,
     ):
         """Initialize the HP iLO sensor."""
         self._hass = hass
-        self._name = sensor_name
-        self._unit_of_measurement = unit_of_measurement
+        self._attr_name = sensor_name
+        self._attr_native_unit_of_measurement = unit_of_measurement
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
         self._ilo_function = SENSOR_TYPES[sensor_type][1]
         self.hp_ilo_data = hp_ilo_data
 
@@ -145,30 +169,7 @@ class HpIloSensor(SensorEntity):
             sensor_value_template.hass = hass
         self._sensor_value_template = sensor_value_template
 
-        self._state = None
-        self._state_attributes = None
-
         _LOGGER.debug("Created HP iLO sensor %r", self)
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return self._name
-
-    @property
-    def native_unit_of_measurement(self):
-        """Return the unit of measurement of the sensor."""
-        return self._unit_of_measurement
-
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        return self._state
-
-    @property
-    def extra_state_attributes(self):
-        """Return the device state attributes."""
-        return self._state_attributes
 
     def update(self):
         """Get the latest data from HP iLO and updates the states."""
@@ -183,7 +184,7 @@ class HpIloSensor(SensorEntity):
                 ilo_data=ilo_data, parse_result=False
             )
 
-        self._state = ilo_data
+        self._attr_native_value = ilo_data
 
 
 class HpIloData:
@@ -220,6 +221,33 @@ class HpIloData:
 
 
 
+
+class HpIloDeviceSensor(HpIloSensor):
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        hp_ilo_data: HpIloData,
+        sensor_type,
+        sensor_name,
+        sensor_value_template:template.Template,
+        unit_of_measurement,
+        device_class,
+        state_class,
+        entry: ConfigEntry,
+        device_info: DeviceInfo
+    ) -> None:
+        """Initialize the HpIlo entity."""
+        super().__init__(hass=hass, hp_ilo_data=hp_ilo_data, sensor_type=sensor_type, sensor_name=sensor_name,
+        sensor_value_template=sensor_value_template,unit_of_measurement=unit_of_measurement,
+        device_class=device_class,state_class=state_class)
+        self._hass = hass
+
+        self._entry_id = entry.entry_id 
+        self._attr_device_info = device_info
+        self._attr_unique_id = f"{entry.data['unique_id']}_{sensor_name}"
+    
+    
 '''
 Setup device and sensor entities for a config entry
 '''
@@ -232,6 +260,7 @@ async def async_setup_entry(
    
     # Create a data fetcher to support all of the configured sensors. Then make
     # the first call to init the data and confirm we can connect.
+    # TODO: this should probably be constructed in the ConfigEntry
     try:
         hp_ilo_data = HpIloData(entry.data['host'], DEFAULT_PORT,  entry.data['username'],  entry.data['password']) # TODO: entry.data['port'] is garbage / set to 80
     except ValueError as error:
@@ -268,6 +297,7 @@ async def async_setup_entry(
             except hpilo.IloFeatureNotSupported as error:
                 _LOGGER.info("%s cant be loaded: %s",SENSOR_TYPES[sensor_type][0],error)
                 continue
+
             if sensor_type == "server_health":
                 for health_value_keys in sensor_data:
                     if(health_value_keys == 'temperature'):
@@ -281,11 +311,11 @@ async def async_setup_entry(
                                     sensor_type=sensor_type,
                                     sensor_value_template=template.Template('{{ ilo_data.temperature["'+temperature_sensor['label']+'"].currentreading[0] }}'),
                                     unit_of_measurement=TEMP_CELSIUS,
-                                    # TODO: add device class and state_class
+                                    device_class=SensorDeviceClass.TEMPERATURE,
+                                    state_class=SensorStateClass.MEASUREMENT,
                                     entry=entry,
                                     device_info=device_info
                                 )
-                                new_sensor._attr_device_class =DEVICE_CLASS_TEMPERATURE
                                 sensors.append(new_sensor )
                     if(health_value_keys == 'fans'):
                         for fan_sensor in sensor_data[health_value_keys].values():
@@ -297,15 +327,14 @@ async def async_setup_entry(
                                     sensor_type=sensor_type,
                                     sensor_value_template=template.Template('{{ ilo_data.fans["'+fan_sensor['label']+'"].speed[0] }}'),
                                     unit_of_measurement=PERCENTAGE,
-                                    # TODO: add device class and state_class
+                                    device_class=None,# TODO: this shouldn't be a sensor but a FanEntity
+                                    state_class=None,# TODO: this shouldn't be a sensor but a FanEntity
                                     entry=entry,
                                     device_info=device_info
                                 )
                             new_sensor._attr_icon = "mdi:fan"
                             sensors.append(new_sensor )
-                    
                     else:
-                        
                         if(health_value_keys == 'firmware_information'):
                             device_info['sw_version'] = sensor_data[health_value_keys]['iLO']
                         _LOGGER.info("%s: %s not yet supported data",sensor_type_name,health_value_keys)
@@ -318,7 +347,8 @@ async def async_setup_entry(
                             sensor_type=sensor_type,
                             sensor_value_template=template.Template('{{ ilo_data }}'),
                             unit_of_measurement=TIME_SECONDS,
-                            # TODO: add device class and state_class
+                            device_class=None,# TODO: it's not clear what entity is best for this
+                            state_class=None,# TODO:  it's not clear what entity is best for this
                             entry=entry,
                             device_info=device_info
                         )
@@ -332,12 +362,12 @@ async def async_setup_entry(
                     sensor_type=sensor_type,
                     sensor_value_template=template.Template('{{ ilo_data}}'),
                     unit_of_measurement=None,
-                    # TODO: add device class and state_class
+                    device_class=BinarySensorDeviceClass.POWER,#TODO: This should use a real binary sensor entity
+                    state_class=None,# TODO:  it's not clear what entity is best for this
                     entry=entry,
                     device_info=device_info
                 )
-                new_sensor._attr_device_class =BinarySensorDeviceClass.POWER
-                #TODO: This should use a real binary sensor entity
+                
                 sensors.append(new_sensor )
             elif sensor_type == "server_host_data":
                 # SMBIOS Entries
@@ -350,58 +380,7 @@ async def async_setup_entry(
                         pass # not sure what to do with this info
                     if smbios_value['type'] == 17: # 	Memory Device 
                         pass # not sure what to do with this info
-
             else:
                 _LOGGER.warn("Automatic config for %s not yet implemented. Values: %s", sensor_type_name,sensor_data)
-    async_add_entities(sensors, True)
 
-
-class HpIloDeviceSensor(HpIloSensor):
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        hp_ilo_data,
-        sensor_type,
-        sensor_name,
-        sensor_value_template:template.Template,
-        unit_of_measurement,
-        entry: ConfigEntry,
-        device_info: DeviceInfo
-    ) -> None:
-        """Initialize the HpIlo entity."""
-        super().__init__(  
-            hass,
-            hp_ilo_data,
-            sensor_type,
-            sensor_name,
-            sensor_value_template,
-            unit_of_measurement)
-        self._device_id = entry.data['unique_id']
-        self._entry_id = entry.entry_id
-        self._device_info = device_info
-        
-        self._attr_unique_id = f"{entry.data['unique_id']}_{sensor_name}"
-    
-    
-    @property
-    def device_info(self) -> DeviceInfo | None:
-        """Return device information about this IPP device."""
-        if self._device_id is None:
-            raise "no device_id"
-        return self._device_info
-
-    # TODO: What is this good for? could we add some of the additional firmware/smbios info?
-    @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
-        """Return the state attributes of the entity."""
-        return {}
-        return {
-            ATTR_INFO: self.coordinator.data.info.printer_info,
-            ATTR_SERIAL: self.coordinator.data.info.serial,
-            ATTR_LOCATION: self.coordinator.data.info.location,
-            ATTR_STATE_MESSAGE: self.coordinator.data.state.message,
-            ATTR_STATE_REASON: self.coordinator.data.state.reasons,
-            ATTR_COMMAND_SET: self.coordinator.data.info.command_set,
-            ATTR_URI_SUPPORTED: self.coordinator.data.info.printer_uri_supported,
-        }
+    async_add_entities(sensors, False)
