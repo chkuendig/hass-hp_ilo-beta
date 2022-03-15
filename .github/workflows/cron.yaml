@@ -6,6 +6,8 @@ on:
 
 jobs:
   validate:
+  
+    if: ${{ false }}  # disable for now
     runs-on: "ubuntu-latest"
     name: Validate
     steps:
