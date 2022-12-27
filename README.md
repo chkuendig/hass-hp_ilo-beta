@@ -4,6 +4,11 @@ This is a WIP component for an updated **HP Integrated Lights-Out (ILO)** compon
 
 There's still a lot from `custom-components/integration_blueprint` in this repo to keep track of a few missing things. It will eventually be cleaned up.
 
+
+hacs_badge
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+
 # Installation
 Add this repo as a custom repo to HACS and the integration should show up. At the moment there's no versioning of releases yet.
 
