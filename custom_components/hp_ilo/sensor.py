@@ -155,6 +155,7 @@ class HpIloSensor(SensorEntity):
         unit_of_measurement,
         device_class,
         state_class,
+        options=None,
     ):
         """Initialize the HP iLO sensor."""
         self._hass = hass
@@ -164,6 +165,7 @@ class HpIloSensor(SensorEntity):
         self._attr_state_class = state_class
         self._ilo_function = SENSOR_TYPES[sensor_type][1]
         self.hp_ilo_data = hp_ilo_data
+        self._attr_options = options
 
         if sensor_value_template is not None:
             sensor_value_template.hass = hass
@@ -235,12 +237,13 @@ class HpIloDeviceSensor(HpIloSensor):
         device_class,
         state_class,
         entry: ConfigEntry,
-        device_info: DeviceInfo
+        device_info: DeviceInfo,
+        options=None
     ) -> None:
         """Initialize the HpIlo entity."""
         super().__init__(hass=hass, hp_ilo_data=hp_ilo_data, sensor_type=sensor_type, sensor_name=sensor_name,
         sensor_value_template=sensor_value_template,unit_of_measurement=unit_of_measurement,
-        device_class=device_class,state_class=state_class)
+        device_class=device_class,state_class=state_class,options=options)
         self._hass = hass
 
         self._entry_id = entry.entry_id 
@@ -277,7 +280,6 @@ async def async_setup_entry(
     connections= {(CONNECTION_UPNP,unique_id)} #TODO: This is probably the wrong identifier
     identifiers={(DOMAIN, unique_id)} #TODO: This is probably the wrong identifier
     device_info = DeviceInfo(
-        unique_id=unique_id,  #this should come from the bios values, not config ( or config needs to get it from there and set it correctly)
         name=device_name,
         manufacturer="Hewlett Packard Enterprise", 
         configuration_url=configuration_url, 
@@ -362,9 +364,10 @@ async def async_setup_entry(
                     sensor_type=sensor_type,
                     sensor_value_template=template.Template('{{ ilo_data}}'),
                     unit_of_measurement=None,
-                    device_class=BinarySensorDeviceClass.POWER,#TODO: This should use a real binary sensor entity
+                    device_class=SensorDeviceClass.ENUM,#TODO: This should use a real binary sensor entity
                     state_class=None,# TODO:  it's not clear what entity is best for this
                     entry=entry,
+                    options=("ON","OFF"),
                     device_info=device_info
                 )
                 
