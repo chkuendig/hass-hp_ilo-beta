@@ -54,7 +54,7 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "host": device.host[0],
         }
     async def async_step_ssdp(self, discovery_info: ssdp.SsdpServiceInfo) -> FlowResult:
-        """Handle a discovered UniFi device."""
+        """Handle a discovered HP iLO device."""
         _LOGGER.info(
                 "discovery_info : %s.",
                 discovery_info,
@@ -110,65 +110,22 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle a flow initiated by the user."""
-        errors = {}
 
         if user_input is not None:
-            host = user_input[CONF_HOST]
-            #timeout = user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
+            self.config = {}
+            self.config[CONF_HOST] = user_input[CONF_HOST]
+            self.config[CONF_NAME] = user_input[CONF_HOST].upper()
+            self.config[CONF_PORT] = user_input[CONF_PORT]
+            self.config[CONF_PROTOCOL] = user_input[CONF_PROTOCOL]
+            return await self.async_step_confirm(user_input)
+        else:
+            data_schema = {
+                vol.Required(CONF_HOST,  default="host"): str,
+                vol.Required(CONF_PORT, default="80"): str,
+                vol.Required(CONF_PROTOCOL, default="http"):str
+            }
+            return self.async_show_form(step_id="user",   data_schema=vol.Schema(data_schema))
 
-            try:
-                hello = partial(blk.hello, host, timeout=timeout)
-                device = await self.hass.async_add_executor_job(hello)
-
-            except NetworkTimeoutError:
-                errors["base"] = "cannot_connect"
-                err_msg = "Device not found"
-
-            except OSError as err:
-                if err.errno in {errno.EINVAL, socket.EAI_NONAME}:
-                    errors["base"] = "invalid_host"
-                    err_msg = "Invalid hostname or IP address"
-                elif err.errno == errno.ENETUNREACH:
-                    errors["base"] = "cannot_connect"
-                    err_msg = str(err)
-                else:
-                    errors["base"] = "unknown"
-                    err_msg = str(err)
-
-            else:
-                device.timeout = timeout
-
-                if self.source != config_entries.SOURCE_REAUTH:
-                    await self.async_set_device(device)
-                    self._abort_if_unique_id_configured(
-                        updates={CONF_HOST: device.host[0], CONF_TIMEOUT: timeout}
-                    )
-                    return await self.async_step_auth()
-
-                if device.mac == self.device.mac:
-                    await self.async_set_device(device, raise_on_progress=False)
-                    return await self.async_step_auth()
-
-                errors["base"] = "invalid_host"
-                err_msg = (
-                    "This is not the device you are looking for. The MAC "
-                    f"address must be {format_mac(self.device.mac)}"
-                )
-
-            _LOGGER.error("Failed to connect to the device at %s: %s", host, err_msg)
-
-            if self.source == config_entries.SOURCE_IMPORT:
-                return self.async_abort(reason=errors["base"])
-
-        data_schema = {
-            vol.Required(CONF_HOST): str,
-           # vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
-        }
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(data_schema),
-            errors=errors,
-        )
 
     async def _async_get_entry(self):
         """Return config entry or update existing config entry."""
