@@ -35,7 +35,9 @@ from homeassistant.const import (
     CONF_UNIT_OF_MEASUREMENT,
     CONF_USERNAME,
     CONF_VALUE_TEMPLATE,
-    PERCENTAGE,TEMP_CELSIUS,TIME_SECONDS
+    PERCENTAGE,
+    UnitOfTemperature,  # Updated import for temperature unit
+    UnitOfTime,         # Updated import for time unit
 )
 from homeassistant.const import (
     CONF_HOST, 
@@ -302,23 +304,23 @@ async def async_setup_entry(
 
             if sensor_type == "server_health":
                 for health_value_keys in sensor_data:
-                    if(health_value_keys == 'temperature'):
+                    if health_value_keys == 'temperature':
                         for temperature_sensor in sensor_data[health_value_keys].values():
                             if temperature_sensor['status'] != 'Not Installed':
-                                _LOGGER.info("Adding sensor for Temperature Sensor %s",temperature_sensor['label'])
+                                _LOGGER.info("Adding sensor for Temperature Sensor %s", temperature_sensor['label'])
                                 new_sensor = HpIloDeviceSensor(
                                     hass=hass,
                                     hp_ilo_data=hp_ilo_data,
                                     sensor_name=temperature_sensor['label'],
                                     sensor_type=sensor_type,
-                                    sensor_value_template=template.Template('{{ ilo_data.temperature["'+temperature_sensor['label']+'"].currentreading[0] }}'),
-                                    unit_of_measurement=TEMP_CELSIUS,
+                                    sensor_value_template=template.Template('{{ ilo_data.temperature["' + temperature_sensor['label'] + '"].currentreading[0] }}'),
+                                    unit_of_measurement=UnitOfTemperature.CELSIUS,  # Updated to UnitOfTemperature.CELSIUS
                                     device_class=SensorDeviceClass.TEMPERATURE,
                                     state_class=SensorStateClass.MEASUREMENT,
                                     entry=entry,
                                     device_info=device_info
                                 )
-                                sensors.append(new_sensor )
+                                sensors.append(new_sensor)
                     if(health_value_keys == 'fans'):
                         for fan_sensor in sensor_data[health_value_keys].values():
                             _LOGGER.info("Adding sensor for Fan %s ",fan_sensor['label'])
@@ -343,18 +345,18 @@ async def async_setup_entry(
             elif sensor_type == "server_power_on_time":
                 _LOGGER.info("Adding sensor for %s", sensor_type_name)
                 new_sensor = HpIloDeviceSensor(
-                            hass=hass,
-                            hp_ilo_data=hp_ilo_data,
-                            sensor_name=sensor_type_name,
-                            sensor_type=sensor_type,
-                            sensor_value_template=template.Template('{{ ilo_data }}'),
-                            unit_of_measurement=TIME_SECONDS,
-                            device_class=None,# TODO: it's not clear what entity is best for this
-                            state_class=None,# TODO:  it's not clear what entity is best for this
-                            entry=entry,
-                            device_info=device_info
-                        )
-                sensors.append(new_sensor )
+                    hass=hass,
+                    hp_ilo_data=hp_ilo_data,
+                    sensor_name=sensor_type_name,
+                    sensor_type=sensor_type,
+                    sensor_value_template=template.Template('{{ ilo_data }}'),
+                    unit_of_measurement=UnitOfTime.SECONDS,  # Updated to UnitOfTime.SECONDS
+                    device_class=None,  # TODO: it's not clear what entity is best for this
+                    state_class=None,  # TODO: it's not clear what entity is best for this
+                    entry=entry,
+                    device_info=device_info
+                )
+                sensors.append(new_sensor)
             elif sensor_type == "server_power_status":
                 _LOGGER.info("Adding sensor for %s", sensor_type_name)
                 new_sensor = HpIloDeviceSensor(
