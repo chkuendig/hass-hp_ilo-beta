@@ -12,18 +12,20 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 
 from .sensor import DOMAIN
+
 PLATFORMS = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up entites of all platforms from a config entry."""
-    #hass.data.setdefault(DOMAIN, {})
+    """Set up entities of all platforms from a config entry."""
+    hass.data.setdefault(DOMAIN, {})  # Ensure DOMAIN key exists
+    hass.data[DOMAIN][entry.entry_id] = entry  # Store entry data
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)  # Safely remove entry
     return unload_ok
