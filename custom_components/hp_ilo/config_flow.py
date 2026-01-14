@@ -143,8 +143,10 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 self.ilo = hpilo.Ilo(
                     hostname=self.config[CONF_HOST],
+                    port=int(self.config[CONF_PORT]),
                     login=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD]
+                    password=user_input[CONF_PASSWORD],
+                    ssl=(self.config[CONF_PROTOCOL] == "https")
                 ) 
                 print(self.ilo)
                 print(user_input)
@@ -161,7 +163,7 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 hpilo.IloLoginFailed,
             ) as error:
                 #raise ValueError(f"Unable to init HP ILO, {error}") from error
-                errors = f"Unable to init HP ILO, {error}"%error
+                errors = f"Unable to init HP ILO, {error}"
             
 
         data_schema = {
