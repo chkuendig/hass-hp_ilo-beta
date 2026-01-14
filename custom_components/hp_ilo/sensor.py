@@ -313,7 +313,7 @@ async def async_setup_entry(
                                     hp_ilo_data=hp_ilo_data,
                                     sensor_name=temperature_sensor['label'],
                                     sensor_type=sensor_type,
-                                    sensor_value_template=template.Template('{{ ilo_data.temperature["' + temperature_sensor['label'] + '"].currentreading[0] }}'),
+                                    sensor_value_template=template.Template('{{ ilo_data.temperature["' + temperature_sensor['label'] + '"].currentreading[0] }}', hass),
                                     unit_of_measurement=UnitOfTemperature.CELSIUS,  # Updated to UnitOfTemperature.CELSIUS
                                     device_class=SensorDeviceClass.TEMPERATURE,
                                     state_class=SensorStateClass.MEASUREMENT,
@@ -329,7 +329,7 @@ async def async_setup_entry(
                                     hp_ilo_data=hp_ilo_data,
                                     sensor_name=fan_sensor['label'],
                                     sensor_type=sensor_type,
-                                    sensor_value_template=template.Template('{{ ilo_data.fans["'+fan_sensor['label']+'"].speed[0] }}'),
+                                    sensor_value_template=template.Template('{{ ilo_data.fans["'+fan_sensor['label']+'"].speed[0] }}', hass),
                                     unit_of_measurement=PERCENTAGE,
                                     device_class=None,# TODO: this shouldn't be a sensor but a FanEntity
                                     state_class=None,# TODO: this shouldn't be a sensor but a FanEntity
@@ -349,7 +349,7 @@ async def async_setup_entry(
                     hp_ilo_data=hp_ilo_data,
                     sensor_name=sensor_type_name,
                     sensor_type=sensor_type,
-                    sensor_value_template=template.Template('{{ ilo_data }}'),
+                    sensor_value_template=template.Template('{{ ilo_data }}', hass),
                     unit_of_measurement=UnitOfTime.SECONDS,  # Updated to UnitOfTime.SECONDS
                     device_class=None,  # TODO: it's not clear what entity is best for this
                     state_class=None,  # TODO: it's not clear what entity is best for this
@@ -364,7 +364,7 @@ async def async_setup_entry(
                     hp_ilo_data=hp_ilo_data,
                     sensor_name=sensor_type_name,
                     sensor_type=sensor_type,
-                    sensor_value_template=template.Template('{{ ilo_data}}'),
+                    sensor_value_template=template.Template('{{ ilo_data}}', hass),
                     unit_of_measurement=None,
                     device_class=SensorDeviceClass.ENUM,#TODO: This should use a real binary sensor entity
                     state_class=None,# TODO:  it's not clear what entity is best for this

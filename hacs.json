@@ -1,5 +1,6 @@
 {
     "name": "HP Integrated Lights-Out (ILO) ",
     "hacs": "1.6.0",
+    "homeassistant": "2025.1.1",
     "render_readme":true
 }
