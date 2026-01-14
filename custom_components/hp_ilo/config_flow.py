@@ -5,7 +5,7 @@ import voluptuous as vol
 import hpilo 
 
 from homeassistant import config_entries, data_entry_flow
-from homeassistant.components import ssdp
+from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo, ATTR_UPNP_FRIENDLY_NAME, ATTR_UPNP_MODEL_NAME
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
 from .sensor import SENSOR_TYPES, DOMAIN
@@ -43,7 +43,7 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "model": device.model,
             "host": device.host[0],
         }
-    async def async_step_ssdp(self, discovery_info: ssdp.SsdpServiceInfo) -> FlowResult:
+    async def async_step_ssdp(self, discovery_info: SsdpServiceInfo) -> FlowResult:
         """Handle a discovered HP iLO device."""
         _LOGGER.info(
                 "discovery_info : %s.",
@@ -63,9 +63,9 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         
         self.config = {
             CONF_HOST: parsed_url.hostname,
-            CONF_NAME: discovery_info.upnp[ssdp.ATTR_UPNP_FRIENDLY_NAME],
-            CONF_DESCRIPTION: discovery_info.upnp[ssdp.ATTR_UPNP_MODEL_NAME],
             CONF_PORT: discovered_port,
+            CONF_NAME: discovery_info.upnp[ATTR_UPNP_FRIENDLY_NAME],
+            CONF_DESCRIPTION: discovery_info.upnp[ATTR_UPNP_MODEL_NAME],
             CONF_UNIQUE_ID: discovery_info.ssdp_udn # Will be updated with serial number during auth step
         }
         # we assume port 80 and same IP here. In theory this could also be inferred from a) using friendly name as a hostname or listening for  

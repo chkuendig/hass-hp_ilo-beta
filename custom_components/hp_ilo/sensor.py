@@ -385,9 +385,9 @@ async def async_setup_entry(
                         device_info['hw_version'] = smbios_value['Family'] + " " +smbios_value[ 'Date']
                     if smbios_value['type'] == 1: # System Information 
                         device_info['model'] = smbios_value['Product Name']
-                    if smbios_value['type'] == 4: # 	Processor Information 
+                    if smbios_value['type'] == 4: # Processor Information 
                         pass # not sure what to do with this info
-                    if smbios_value['type'] == 17: # 	Memory Device 
+                    if smbios_value['type'] == 17: # Memory Device 
                         pass # not sure what to do with this info
             else:
                 _LOGGER.warning("Automatic config for %s not yet implemented. Values: %s", sensor_type_name,sensor_data)
