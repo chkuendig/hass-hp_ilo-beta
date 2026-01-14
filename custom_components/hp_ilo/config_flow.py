@@ -117,6 +117,10 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self.config[CONF_NAME] = user_input[CONF_HOST].upper()
             self.config[CONF_PORT] = user_input[CONF_PORT]
             self.config[CONF_PROTOCOL] = user_input[CONF_PROTOCOL]
+            
+            # Check for existing entries with the same host to prevent duplicates
+            self._async_abort_entries_match({CONF_HOST: self.config[CONF_HOST]})
+            
             return await self.async_step_confirm(user_input)
         else:
             data_schema = {
@@ -130,6 +134,10 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def _async_get_entry(self):
         """Return config entry or update existing config entry."""
         print("self.async_create_entry")
+        # Set unique ID based on host if not already set
+        if self.unique_id is None:
+            await self.async_set_unique_id(self.config[CONF_HOST])
+        
         return self.async_create_entry(
                     title=self.config[ CONF_NAME],
                     data=self.config,
