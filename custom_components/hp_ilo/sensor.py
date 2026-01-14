@@ -59,7 +59,6 @@ _LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_NAME = "HP ILO"
-DEFAULT_PORT = 443
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=300)
 
@@ -100,7 +99,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             ],
         ),
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-        vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
+        vol.Required(CONF_PORT): cv.port,
     }
 )
 
@@ -210,11 +209,13 @@ class HpIloData:
     def update(self):
         """Get the latest data from HP iLO."""
         try:
+            _LOGGER.warning("Creating hpilo.Ilo with host=%s, port=%s", 
+                           self._host, self._port)
             self.data = hpilo.Ilo(
                 hostname=self._host,
                 login=self._login,
                 password=self._password,
-                port=self._port,
+                port=self._port
             )
         except (
             hpilo.IloError,
@@ -267,7 +268,9 @@ async def async_setup_entry(
     # the first call to init the data and confirm we can connect.
     # TODO: this should probably be constructed in the ConfigEntry
     try:
-        hp_ilo_data = HpIloData(entry.data['host'], DEFAULT_PORT,  entry.data['username'],  entry.data['password']) # TODO: entry.data['port'] is garbage / set to 80
+        # Port is required from config flow
+        port = int(entry.data['port'])
+        hp_ilo_data = HpIloData(entry.data['host'], port, entry.data['username'], entry.data['password'])
     except ValueError as error:
         _LOGGER.error(error)
         return
@@ -277,7 +280,8 @@ async def async_setup_entry(
         unique_id = entry.entry_id
 
     device_name = entry.data['name']
-    configuration_url = entry.data['protocol'] + "://"+entry.data['host']+":"+str(entry.data['port'])
+    # iLO always uses HTTPS, construct URL with host and port
+    configuration_url = f"https://{entry.data['host']}:{entry.data['port']}"
 
     connections= {(CONNECTION_UPNP,unique_id)} #TODO: This is probably the wrong identifier
     identifiers={(DOMAIN, unique_id)} #TODO: This is probably the wrong identifier

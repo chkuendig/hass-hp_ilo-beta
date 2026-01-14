@@ -8,7 +8,7 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.components import ssdp
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
-from .sensor import SENSOR_TYPES, DEFAULT_PORT,  DOMAIN
+from .sensor import SENSOR_TYPES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,13 +57,16 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
    
         parsed_url = urlparse(discovery_info.ssdp_location)
+        # Store discovered information without defaults - user will confirm/edit in next step
+        # Note: hpilo always uses SSL/TLS, the port determines the connection
+        discovered_port = parsed_url.port
+        
         self.config = {
             CONF_HOST: parsed_url.hostname,
-            CONF_PORT: parsed_url.port, # TODO: FIX THIS, shoulnd't be 80 and HTTP 
-            CONF_PROTOCOL: parsed_url.scheme ,
             CONF_NAME: discovery_info.upnp[ssdp.ATTR_UPNP_FRIENDLY_NAME],
             CONF_DESCRIPTION: discovery_info.upnp[ssdp.ATTR_UPNP_MODEL_NAME],
-            CONF_UNIQUE_ID: discovery_info.ssdp_udn # TODO: This should be tagged as part of "Connections", but the actual device should be identified by it's serial number (after auth)
+            CONF_PORT: discovered_port,
+            CONF_UNIQUE_ID: discovery_info.ssdp_udn # Will be updated with serial number during auth step
         }
         # we assume port 80 and same IP here. In theory this could also be inferred from a) using friendly name as a hostname or listening for  
         # DSSP NT urn:dmtf-org:service:redfish-rest:1 which announces the admin URL directly (but misses other fields so it would be annoying to combine)
@@ -88,13 +91,23 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_confirm(self, user_input=None):
         """Handle user-confirmation of discovered node."""
         if user_input is not None:
+            # Update config with user-confirmed values
+            self.config[CONF_HOST] = user_input[CONF_HOST]
+            self.config[CONF_PORT] = int(user_input[CONF_PORT])
             return await self.async_step_auth()
+        
+        # Prepare default values from discovery
+        data_schema = {
+            vol.Required(CONF_HOST, default=self.config.get(CONF_HOST, "")): str,
+            vol.Required(CONF_PORT, default=self.config.get(CONF_PORT, "")): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535))
+        }
+        
         return self.async_show_form(
             step_id="confirm",
+            data_schema=vol.Schema(data_schema),
             description_placeholders={
-                CONF_NAME: self.config[ CONF_NAME],
+                CONF_NAME: self.config[CONF_NAME],
                 CONF_DESCRIPTION: self.config[CONF_DESCRIPTION],
-                CONF_HOST: self.config[CONF_HOST],
             },
         )
 
@@ -105,8 +118,10 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self.config = {}
             self.config[CONF_HOST] = user_input[CONF_HOST]
             self.config[CONF_NAME] = user_input[CONF_HOST].upper()
-            self.config[CONF_PORT] = user_input[CONF_PORT]
-            self.config[CONF_PROTOCOL] = user_input[CONF_PROTOCOL]
+            # Convert port to integer
+            self.config[CONF_PORT] = int(user_input[CONF_PORT])
+            # Initialize unique_id with host (will be updated with serial number during auth)
+            self.config[CONF_UNIQUE_ID] = user_input[CONF_HOST]
             
             # Check for existing entries with the same host to prevent duplicates
             self._async_abort_entries_match({CONF_HOST: self.config[CONF_HOST]})
@@ -114,9 +129,8 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_confirm(user_input)
         else:
             data_schema = {
-                vol.Required(CONF_HOST,  default="host"): str,
-                vol.Required(CONF_PORT, default="80"): str,
-                vol.Required(CONF_PROTOCOL, default="http"):str
+                vol.Required(CONF_HOST): str,
+                vol.Required(CONF_PORT): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535))
             }
             return self.async_show_form(step_id="user",   data_schema=vol.Schema(data_schema))
 
@@ -127,8 +141,11 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if self.unique_id is None:
             await self.async_set_unique_id(self.config[CONF_HOST])
         
+        # Store unique_id in config data for sensor access
+        self.config['unique_id'] = self.unique_id
+        
         return self.async_create_entry(
-                    title=self.config[ CONF_NAME],
+                    title=self.config[CONF_NAME],
                     data=self.config,
                 )
 
@@ -143,12 +160,19 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     hostname=self.config[CONF_HOST],
                     port=int(self.config[CONF_PORT]),
                     login=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD],
-                    ssl=(self.config[CONF_PROTOCOL] == "https")
+                    password=user_input[CONF_PASSWORD]
                 ) 
-                # Verify connection by attempting to get basic info
+                # Verify connection and get serial number for unique_id
                 try:
-                    self.ilo.get_host_data()
+                    host_data = self.ilo.get_host_data()
+                    # Extract serial number from host data for stable unique_id
+                    # host_data is a list with one dict containing 'Serial Number' field
+                    if host_data and len(host_data) > 0:
+                        serial_number = host_data[0].get("Serial Number")
+                        if serial_number:
+                            # Use combination of host and serial number for unique_id
+                            # This ensures uniqueness across network changes
+                            self.config[CONF_UNIQUE_ID] = f"{self.config[CONF_HOST]}_{serial_number}"
                 except Exception as e:
                     _LOGGER.error("Failed to get host data from iLO: %s", e)
                 

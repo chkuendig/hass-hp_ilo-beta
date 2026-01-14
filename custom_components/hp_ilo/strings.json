@@ -4,6 +4,7 @@
     "step": {
       "user": {
         "title": "Connect to the device",
+        "description": "Enter the iLO hostname or IP address and SSL port (typically 443 for iLO 3+ or 17988 for iLO 2).",
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
           "port": "[%key:common::config_flow::data::port%]"
@@ -24,8 +25,12 @@
         }
       },
       "confirm": {
-        "title": "Confirm adding HP iLO",
-        "description": "You are about to add `{name}` ({description}) at `{host}` to Home Assistant.\n\n **To complete the process, enter your iLO username and password.**"
+        "title": "Confirm HP iLO Connection Settings",
+        "description": "Discovered HP iLO device: **{name}** ({description})\n\n**Please confirm or edit the connection settings below.** The iLO interface always uses SSL/TLS encryption.",
+        "data": {
+          "host": "[%key:common::config_flow::data::host%]",
+          "port": "[%key:common::config_flow::data::port%]"
+        }
       }
     },
     "abort": {
