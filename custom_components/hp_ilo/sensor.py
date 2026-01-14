@@ -267,7 +267,9 @@ async def async_setup_entry(
     # the first call to init the data and confirm we can connect.
     # TODO: this should probably be constructed in the ConfigEntry
     try:
-        hp_ilo_data = HpIloData(entry.data['host'], DEFAULT_PORT,  entry.data['username'],  entry.data['password']) # TODO: entry.data['port'] is garbage / set to 80
+        # Use configured port or fall back to DEFAULT_PORT
+        port = int(entry.data.get('port', DEFAULT_PORT))
+        hp_ilo_data = HpIloData(entry.data['host'], port, entry.data['username'], entry.data['password'])
     except ValueError as error:
         _LOGGER.error(error)
         return

@@ -57,10 +57,15 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
    
         parsed_url = urlparse(discovery_info.ssdp_location)
+        # SSDP discovery typically uses HTTP on port 80, but iLO management uses HTTPS on 443
+        # Use the discovered port if available, otherwise default based on protocol
+        default_port = 443 if parsed_url.scheme == "https" else 80
+        discovered_port = parsed_url.port if parsed_url.port is not None else default_port
+        
         self.config = {
             CONF_HOST: parsed_url.hostname,
-            CONF_PORT: parsed_url.port, # TODO: FIX THIS, shoulnd't be 80 and HTTP 
-            CONF_PROTOCOL: parsed_url.scheme ,
+            CONF_PORT: discovered_port,
+            CONF_PROTOCOL: parsed_url.scheme,
             CONF_NAME: discovery_info.upnp[ssdp.ATTR_UPNP_FRIENDLY_NAME],
             CONF_DESCRIPTION: discovery_info.upnp[ssdp.ATTR_UPNP_MODEL_NAME],
             CONF_UNIQUE_ID: discovery_info.ssdp_udn # TODO: This should be tagged as part of "Connections", but the actual device should be identified by it's serial number (after auth)
@@ -105,7 +110,8 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self.config = {}
             self.config[CONF_HOST] = user_input[CONF_HOST]
             self.config[CONF_NAME] = user_input[CONF_HOST].upper()
-            self.config[CONF_PORT] = user_input[CONF_PORT]
+            # Convert port to integer
+            self.config[CONF_PORT] = int(user_input[CONF_PORT])
             self.config[CONF_PROTOCOL] = user_input[CONF_PROTOCOL]
             
             # Check for existing entries with the same host to prevent duplicates
@@ -115,8 +121,8 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             data_schema = {
                 vol.Required(CONF_HOST,  default="host"): str,
-                vol.Required(CONF_PORT, default="80"): str,
-                vol.Required(CONF_PROTOCOL, default="http"):str
+                vol.Required(CONF_PORT, default=443): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+                vol.Required(CONF_PROTOCOL, default="https"): vol.In(["http", "https"])
             }
             return self.async_show_form(step_id="user",   data_schema=vol.Schema(data_schema))
 
@@ -143,8 +149,7 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     hostname=self.config[CONF_HOST],
                     port=int(self.config[CONF_PORT]),
                     login=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD],
-                    ssl=(self.config[CONF_PROTOCOL] == "https")
+                    password=user_input[CONF_PASSWORD]
                 ) 
                 # Verify connection by attempting to get basic info
                 try:
