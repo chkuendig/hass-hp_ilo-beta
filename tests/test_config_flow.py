@@ -1,110 +1,155 @@
-"""Test integration_blueprint config flow."""
+"""Test hp_ilo config flow."""
 from unittest.mock import patch
 
 from homeassistant import config_entries, data_entry_flow
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.integration_blueprint.const import (
-    BINARY_SENSOR,
-    DOMAIN,
-    PLATFORMS,
-    SENSOR,
-    SWITCH,
+from custom_components.hp_ilo.sensor import DOMAIN
+
+from .const import (
+    MOCK_CONFIG_AUTH_INPUT,
+    MOCK_CONFIG_USER_INPUT,
+    MOCK_CONFIG_FULL,
 )
 
-from .const import MOCK_CONFIG
 
-
-# This fixture bypasses the actual setup of the integration
-# since we only want to test the config flow. We test the
-# actual functionality of the integration in other test modules.
 @pytest.fixture(autouse=True)
 def bypass_setup_fixture():
-    """Prevent setup."""
+    """Prevent setup during config flow tests."""
     with patch(
-        "custom_components.integration_blueprint.async_setup",
-        return_value=True,
-    ), patch(
-        "custom_components.integration_blueprint.async_setup_entry",
+        "custom_components.hp_ilo.async_setup_entry",
         return_value=True,
     ):
         yield
 
 
-# Here we simiulate a successful config flow from the backend.
-# Note that we use the `bypass_get_data` fixture here because
-# we want the config flow validation to succeed during the test.
-async def test_successful_config_flow(hass, bypass_get_data):
-    """Test a successful config flow."""
+@pytest.mark.asyncio
+async def test_manual_flow_success(hass, mock_hpilo):
+    """Test a successful manual config flow."""
     # Initialize a config flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     # Check that the config flow shows the user form as the first step
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "user"
 
-    # If a user were to enter `test_username` for username and `test_password`
-    # for password, it would result in this function call
+    # Submit host/port/protocol - this moves to confirm or auth step
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input=MOCK_CONFIG
+        result["flow_id"], user_input=MOCK_CONFIG_USER_INPUT
     )
 
-    # Check that the config flow is complete and a new entry is created with
-    # the input data
-    assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result["title"] == "test_username"
-    assert result["data"] == MOCK_CONFIG
-    assert result["result"]
+    # Could be confirm or auth step depending on implementation
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] in ("confirm", "auth")
+
+    # If confirm step, move to auth
+    if result["step_id"] == "confirm":
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={}
+        )
+        assert result["type"] == data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "auth"
+
+    # Submit credentials
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input=MOCK_CONFIG_AUTH_INPUT
+    )
+
+    # Check that the config flow is complete and a new entry is created
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HOST] == "192.168.1.100"
+    assert result["data"][CONF_USERNAME] == "Administrator"
+    assert result["data"][CONF_PASSWORD] == "test_password"
 
 
-# In this case, we want to simulate a failure during the config flow.
-# We use the `error_on_get_data` mock instead of `bypass_get_data`
-# (note the function parameters) to raise an Exception during
-# validation of the input config.
-async def test_failed_config_flow(hass, error_on_get_data):
-    """Test a failed config flow due to credential validation failure."""
+@pytest.mark.asyncio
+async def test_manual_flow_auth_error(hass, mock_hpilo_auth_error):
+    """Test manual config flow with authentication failure."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
-    assert result["step_id"] == "user"
-
+    # Submit host/port/protocol
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input=MOCK_CONFIG
+        result["flow_id"], user_input=MOCK_CONFIG_USER_INPUT
     )
 
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
-    assert result["errors"] == {"base": "auth"}
+    # If confirm step, move to auth
+    if result["step_id"] == "confirm":
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={}
+        )
+
+    # Should be at auth step now
+    assert result["step_id"] == "auth"
+
+    # Submit invalid credentials - should get auth error
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input=MOCK_CONFIG_AUTH_INPUT
+    )
+
+    # Should show auth form again with error
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "auth"
+    assert result["errors"] == {"base": "invalid_auth"}
 
 
-# Our config flow also has an options flow, so we must test it as well.
-async def test_options_flow(hass):
-    """Test an options flow."""
-    # Create a new MockConfigEntry and add to HASS (we're bypassing config
-    # flow entirely)
-    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, entry_id="test")
+@pytest.mark.asyncio
+async def test_manual_flow_connection_error(hass, mock_hpilo_connection_error):
+    """Test manual config flow with connection error."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Submit host/port/protocol
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input=MOCK_CONFIG_USER_INPUT
+    )
+
+    # If confirm step, move to auth
+    if result["step_id"] == "confirm":
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={}
+        )
+
+    # Should be at auth step now
+    assert result["step_id"] == "auth"
+
+    # Submit credentials - should get connection error
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input=MOCK_CONFIG_AUTH_INPUT
+    )
+
+    # Should show auth form again with error
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "auth"
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_entry(hass, mock_hpilo):
+    """Test that duplicate entries are prevented."""
+    # Create an existing entry
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG_FULL,
+        unique_id="192.168.1.100",
+    )
     entry.add_to_hass(hass)
 
-    # Initialize an options flow
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-
-    # Verify that the first options step is a user form
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
-    assert result["step_id"] == "user"
-
-    # Enter some fake data into the form
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={platform: platform != SENSOR for platform in PLATFORMS},
+    # Try to add the same host again
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    # Verify that the flow finishes
-    assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result["title"] == "test_username"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input=MOCK_CONFIG_USER_INPUT
+    )
 
-    # Verify that the options were updated
-    assert entry.options == {BINARY_SENSOR: True, SENSOR: False, SWITCH: True}
+    # Should abort due to duplicate
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

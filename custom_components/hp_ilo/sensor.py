@@ -386,6 +386,6 @@ async def async_setup_entry(
                     if smbios_value['type'] == 17: # 	Memory Device 
                         pass # not sure what to do with this info
             else:
-                _LOGGER.warn("Automatic config for %s not yet implemented. Values: %s", sensor_type_name,sensor_data)
+                _LOGGER.warning("Automatic config for %s not yet implemented. Values: %s", sensor_type_name,sensor_data)
 
     async_add_entities(sensors, False)

@@ -72,10 +72,29 @@ There's already a few PRs to improve on this:  https://github.com/home-assistant
 Startup and refresh is currently not optimized, slowing this integration down quite a bit. It also seems that data isn't shared between sensors, meaning the rate limiting is resulting in very coarse grained data once there's more then a handful of sensors active.
 
 ## Tests
-**Status: Planned 🔜**
+**Status: Done ✅**
 
-There's actually no tests at all in Home Assistant for this component right now.
-Most features should be able to be tested with the existing mock data in `python-hpilo`. 
+The component includes a comprehensive pytest-based test suite covering configuration flow and integration setup. Mock data is based on real iLO API responses from [python-hpilo's test data](https://github.com/seveas/python-hpilo/tree/main/tests/xml).
+
+### Running Tests
+
+Install test dependencies and run the test suite:
+
+```bash
+# Install test dependencies
+source venv/bin/activate
+pip install -r requirements_test.txt
+
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_config_flow.py -v
+
+# Run with coverage
+pytest tests/ --cov=custom_components.hp_ilo
+```
+
 
 ## Strings and Translations
 **Status: Planned 🔜**
