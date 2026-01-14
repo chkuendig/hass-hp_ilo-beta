@@ -1,10 +1,5 @@
 """Config flow for HpIlo devices."""
-import errno
-from functools import partial
 import logging
-import socket
-
-
 from urllib.parse import urlparse
 import voluptuous as vol
 import hpilo 
@@ -12,13 +7,8 @@ import hpilo
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.components import ssdp
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME, CONF_TIMEOUT, CONF_TYPE, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
-from homeassistant.helpers import config_validation as cv
-from datetime import timedelta
-
-from homeassistant.helpers.debounce import Debouncer
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
 from .sensor import SENSOR_TYPES, DEFAULT_PORT,  DOMAIN
-#from .helpers import format_mac
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +123,6 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _async_get_entry(self):
         """Return config entry or update existing config entry."""
-        print("self.async_create_entry")
         # Set unique ID based on host if not already set
         if self.unique_id is None:
             await self.async_set_unique_id(self.config[CONF_HOST])
@@ -146,6 +135,7 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_auth(self, user_input=None, errors=None):
         """Authenticate to the device."""
         device = self.device
+        errors_dict = {}
 
         if user_input is not None:
             try:
@@ -156,29 +146,52 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     password=user_input[CONF_PASSWORD],
                     ssl=(self.config[CONF_PROTOCOL] == "https")
                 ) 
-                print(self.ilo)
-                print(user_input)
-                print(self.ilo.get_host_data())
-                self.config[CONF_USERNAME]  = user_input[CONF_USERNAME]
-                self.config[CONF_PASSWORD]  = user_input[CONF_PASSWORD]
+                # Verify connection by attempting to get basic info
+                try:
+                    self.ilo.get_host_data()
+                except Exception as e:
+                    _LOGGER.error("Failed to get host data from iLO: %s", e)
+                
+                self.config[CONF_USERNAME] = user_input[CONF_USERNAME]
+                self.config[CONF_PASSWORD] = user_input[CONF_PASSWORD]
                
-                print(self.ilo.get_embedded_health())
-               
-                return  await self._async_get_entry()
-            except (
-                hpilo.IloError,
-                hpilo.IloCommunicationError,
-                hpilo.IloLoginFailed,
-            ) as error:
-                #raise ValueError(f"Unable to init HP ILO, {error}") from error
-                errors = f"Unable to init HP ILO, {error}"
+                return await self._async_get_entry()
+                
+            except hpilo.IloLoginFailed as error:
+                _LOGGER.warning("Authentication failed for %s: %s", self.config[CONF_HOST], error)
+                errors_dict["base"] = "invalid_auth"
+            except hpilo.IloCommunicationError as error:
+                _LOGGER.warning("Communication error with %s: %s", self.config[CONF_HOST], error)
+                errors_dict["base"] = "cannot_connect"
+            except (hpilo.IloError, hpilo.IloNotARackServer) as error:
+                _LOGGER.error("iLO error for %s: %s", self.config[CONF_HOST], error)
+                errors_dict["base"] = "unknown"
+            except ConnectionError as error:
+                _LOGGER.warning("Connection error to %s: %s", self.config[CONF_HOST], error)
+                errors_dict["base"] = "cannot_connect"
+            except OSError as error:
+                _LOGGER.warning("OS error connecting to %s: %s", self.config[CONF_HOST], error)
+                if "Name or service not known" in str(error) or "nodename nor servname provided" in str(error):
+                    errors_dict["base"] = "invalid_host"
+                else:
+                    errors_dict["base"] = "cannot_connect"
+            except Exception as error:
+                _LOGGER.exception("Unexpected error setting up iLO for %s: %s", self.config[CONF_HOST], error)
+                errors_dict["base"] = "unknown"
             
 
         data_schema = {
-            vol.Required(CONF_USERNAME,  default="Administrator"): str,
+            vol.Required(CONF_USERNAME, default="Administrator"): str,
             vol.Required(CONF_PASSWORD): str,
         }
-        return self.async_show_form(step_id="auth",   data_schema=vol.Schema(data_schema), errors=errors)
+        return self.async_show_form(
+            step_id="auth",
+            data_schema=vol.Schema(data_schema),
+            errors=errors_dict,
+            description_placeholders={
+                CONF_HOST: self.config[CONF_HOST],
+            }
+        )
 
    
     async def async_step_import(self, import_info):
