@@ -328,6 +328,8 @@ async def async_setup_entry(
                     if(health_value_keys == 'fans'):
                         for fan_sensor in sensor_data[health_value_keys].values():
                             _LOGGER.info("Adding sensor for Fan %s ",fan_sensor['label'])
+                            # Note: Using sensor entity since fans are read-only monitoring.
+                            # FanEntity is for controllable fans, which iLO doesn't support.
                             new_sensor = HpIloDeviceSensor(
                                     hass=hass,
                                     hp_ilo_data=hp_ilo_data,
@@ -335,8 +337,8 @@ async def async_setup_entry(
                                     sensor_type=sensor_type,
                                     sensor_value_template=template.Template('{{ ilo_data.fans["'+fan_sensor['label']+'"].speed[0] }}', hass),
                                     unit_of_measurement=PERCENTAGE,
-                                    device_class=None,# TODO: this shouldn't be a sensor but a FanEntity
-                                    state_class=None,# TODO: this shouldn't be a sensor but a FanEntity
+                                    device_class=None,
+                                    state_class=SensorStateClass.MEASUREMENT,
                                     entry=entry,
                                     device_info=device_info
                                 )
@@ -354,30 +356,18 @@ async def async_setup_entry(
                     sensor_name=sensor_type_name,
                     sensor_type=sensor_type,
                     sensor_value_template=template.Template('{{ ilo_data }}', hass),
-                    unit_of_measurement=UnitOfTime.SECONDS,  # Updated to UnitOfTime.SECONDS
-                    device_class=None,  # TODO: it's not clear what entity is best for this
-                    state_class=None,  # TODO: it's not clear what entity is best for this
+                    unit_of_measurement=UnitOfTime.MINUTES,
+                    device_class=SensorDeviceClass.DURATION,
+                    state_class=None,  # Not a cumulative measurement, just current uptime
                     entry=entry,
                     device_info=device_info
                 )
+                # Suggest displaying in days since server uptimes are typically long
+                new_sensor._attr_suggested_unit_of_measurement = UnitOfTime.DAYS
                 sensors.append(new_sensor)
+            # Note: server_power_status is now handled by binary_sensor.py
             elif sensor_type == "server_power_status":
-                _LOGGER.info("Adding sensor for %s", sensor_type_name)
-                new_sensor = HpIloDeviceSensor(
-                    hass=hass,
-                    hp_ilo_data=hp_ilo_data,
-                    sensor_name=sensor_type_name,
-                    sensor_type=sensor_type,
-                    sensor_value_template=template.Template('{{ ilo_data}}', hass),
-                    unit_of_measurement=None,
-                    device_class=SensorDeviceClass.ENUM,#TODO: This should use a real binary sensor entity
-                    state_class=None,# TODO:  it's not clear what entity is best for this
-                    entry=entry,
-                    options=("ON","OFF"),
-                    device_info=device_info
-                )
-                
-                sensors.append(new_sensor )
+                pass  # Handled by binary_sensor platform
             elif sensor_type == "server_host_data":
                 # SMBIOS Entries
                 for smbios_value in sensor_data:

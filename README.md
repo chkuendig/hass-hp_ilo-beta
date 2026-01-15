@@ -51,19 +51,37 @@ The goal is to implement a clean config flow supporting a few things:
 
 Platform | Description
 -- | --
-`binary_sensor` | Show something `True` or `False`.
-`sensor` | Show info from blueprint API.
-`switch` | Switch something `True` or `False`.
+`binary_sensor` | Server power state (ON/OFF).
+`sensor` | Temperature sensors, fan speed sensors, power-on time.
+`switch` | Server power control (turn on/off).
+`button` | Power button press and hold (simulates physical power button).
 
-The existing sensors only implement the sensor entity. Ideally a few more things would be nice:
-- Automatically generate all supported entities automatically. 
-- Device entity with as much information as possile about the system configuration
-- Binary sensor for firmware update status, power
-- Buttons for [Firmware upgrades](
-https://seveas.github.io/python-hpilo/firmware.html) and [reboots/restarts](https://seveas.github.io/python-hpilo/power.html) etc.
-- Switches for Power on/Off
-- Fan entities for fans
-There's already a few PRs to improve on this:  https://github.com/home-assistant/core/pull/65900,  https://github.com/home-assistant/core/pull/32209
+The existing implementation includes:
+- ✅ Automatically generated temperature and fan speed sensors
+- ✅ Device entity with system configuration information (model, BIOS, iLO firmware version)
+- ✅ Binary sensor for power state
+- ✅ Switch for power on/off control
+- ✅ Button for power button press (graceful shutdown/power on)
+- ✅ Button for power button hold (force power off)
+- 🔜 Buttons for [Firmware upgrades](https://seveas.github.io/python-hpilo/firmware.html) and other [power operations](https://seveas.github.io/python-hpilo/power.html) (reset, cold boot, etc.)
+
+### ⚠️ Power Control Entities - Disabled by Default
+
+The following power control entities are **disabled by default** because they can be destructive (e.g., if Home Assistant is running on the same server, you won't be able to turn it back on):
+
+| Entity | Description |
+|--------|-------------|
+| **Power Button** | Simulates a short press of the physical power button (graceful shutdown when on, power on when off) |
+| **Power Button Hold (Force Off)** | Simulates holding the power button - forces immediate hard power off. ⚠️ Can cause data loss! |
+| **Server Power Control** (switch) | Turn server on/off via `set_host_power()` |
+
+To enable these entities:
+1. Go to **Settings** → **Devices & Services** → **HP iLO**
+2. Click on your device
+3. Find the disabled entities (shown with a "disabled" badge)
+4. Click on the entity and select **Enable**
+
+Related closed PRs in upstream: https://github.com/home-assistant/core/pull/65900, https://github.com/home-assistant/core/pull/32209
 
 
 ## Caching 

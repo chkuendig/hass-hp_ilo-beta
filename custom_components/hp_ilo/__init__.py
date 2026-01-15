@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from .sensor import DOMAIN
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SWITCH, Platform.BUTTON]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entities of all platforms from a config entry."""
