@@ -5,15 +5,16 @@ import logging
 
 import hpilo
 
-from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
+from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.device_registry import CONNECTION_UPNP
 
-from .sensor import HpIloData, DOMAIN
+from .coordinator import HpIloDataUpdateCoordinator
 
+DOMAIN = "hp_ilo"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -24,17 +25,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up HP iLO button entities."""
     
-    try:
-        port = int(entry.data['port'])
-        hp_ilo_data = HpIloData(
-            entry.data['host'], 
-            port, 
-            entry.data['username'], 
-            entry.data['password']
-        )
-    except ValueError as error:
-        _LOGGER.error("Failed to initialize HP iLO data: %s", error)
-        return
+    # Get the coordinator from hass.data
+    coordinator: HpIloDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     # config flow sets this to either UUID, serial number or None
     if (unique_id := entry.unique_id) is None:
@@ -55,20 +47,17 @@ async def async_setup_entry(
 
     buttons = [
         HpIloPowerButton(
-            hass=hass,
-            hp_ilo_data=hp_ilo_data,
+            coordinator=coordinator,
             entry=entry,
             device_info=device_info
         ),
         HpIloPowerButtonHold(
-            hass=hass,
-            hp_ilo_data=hp_ilo_data,
+            coordinator=coordinator,
             entry=entry,
             device_info=device_info
         ),
         HpIloResetButton(
-            hass=hass,
-            hp_ilo_data=hp_ilo_data,
+            coordinator=coordinator,
             entry=entry,
             device_info=device_info
         ),
@@ -93,26 +82,29 @@ class HpIloPowerButton(ButtonEntity):
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        hp_ilo_data: HpIloData,
+        coordinator: HpIloDataUpdateCoordinator,
         entry: ConfigEntry,
         device_info: DeviceInfo,
     ) -> None:
         """Initialize the button."""
-        self._hass = hass
-        self.hp_ilo_data = hp_ilo_data
-        self._entry_id = entry.entry_id
+        self.coordinator = coordinator
         self._attr_device_info = device_info
         self._attr_name = "Power Button"
         self._attr_unique_id = f"{entry.data['unique_id']}_press_pwr_btn"
 
     async def async_press(self) -> None:
         """Press the power button."""
+        if not self.coordinator.data or not self.coordinator.data.ilo:
+            _LOGGER.error("No iLO connection available")
+            return
+            
         try:
-            await self._hass.async_add_executor_job(
-                self.hp_ilo_data.data.press_pwr_btn
+            await self.hass.async_add_executor_job(
+                self.coordinator.data.ilo.press_pwr_btn
             )
             _LOGGER.info("Successfully pressed power button")
+            # Request a refresh to update the power state
+            await self.coordinator.async_request_refresh()
         except (
             hpilo.IloError,
             hpilo.IloCommunicationError,
@@ -140,26 +132,29 @@ class HpIloPowerButtonHold(ButtonEntity):
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        hp_ilo_data: HpIloData,
+        coordinator: HpIloDataUpdateCoordinator,
         entry: ConfigEntry,
         device_info: DeviceInfo,
     ) -> None:
         """Initialize the button."""
-        self._hass = hass
-        self.hp_ilo_data = hp_ilo_data
-        self._entry_id = entry.entry_id
+        self.coordinator = coordinator
         self._attr_device_info = device_info
         self._attr_name = "Power Button Hold (Force Off)"
         self._attr_unique_id = f"{entry.data['unique_id']}_power_button_hold"
 
     async def async_press(self) -> None:
         """Press and hold the power button (force power off)."""
+        if not self.coordinator.data or not self.coordinator.data.ilo:
+            _LOGGER.error("No iLO connection available")
+            return
+            
         try:
-            await self._hass.async_add_executor_job(
-                self.hp_ilo_data.data.hold_pwr_btn
+            await self.hass.async_add_executor_job(
+                self.coordinator.data.ilo.hold_pwr_btn
             )
             _LOGGER.info("Successfully held power button (force off)")
+            # Request a refresh to update the power state
+            await self.coordinator.async_request_refresh()
         except (
             hpilo.IloError,
             hpilo.IloCommunicationError,
@@ -183,26 +178,29 @@ class HpIloResetButton(ButtonEntity):
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        hp_ilo_data: HpIloData,
+        coordinator: HpIloDataUpdateCoordinator,
         entry: ConfigEntry,
         device_info: DeviceInfo,
     ) -> None:
         """Initialize the button."""
-        self._hass = hass
-        self.hp_ilo_data = hp_ilo_data
-        self._entry_id = entry.entry_id
+        self.coordinator = coordinator
         self._attr_device_info = device_info
         self._attr_name = "Reset Server"
         self._attr_unique_id = f"{entry.data['unique_id']}_reset_server"
 
     async def async_press(self) -> None:
         """Reset the server."""
+        if not self.coordinator.data or not self.coordinator.data.ilo:
+            _LOGGER.error("No iLO connection available")
+            return
+            
         try:
-            await self._hass.async_add_executor_job(
-                self.hp_ilo_data.data.reset_server
+            await self.hass.async_add_executor_job(
+                self.coordinator.data.ilo.reset_server
             )
             _LOGGER.info("Successfully reset server")
+            # Request a refresh to update the state
+            await self.coordinator.async_request_refresh()
         except (
             hpilo.IloError,
             hpilo.IloCommunicationError,

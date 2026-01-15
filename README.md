@@ -75,10 +75,12 @@ To enable these entities:
 4. Click on the entity and select **Enable**
 
 
-## Caching 
-**Status: Planned 🔜**
+## Data Updates & Caching
 
-Startup and refresh is currently not optimized, slowing this integration down quite a bit. It also seems that data isn't shared between sensors, meaning the rate limiting is resulting in very coarse grained data once there's more then a handful of sensors active.
+The integration uses Home Assistant's `DataUpdateCoordinator` pattern for efficient data fetching:
+- All data is fetched in a single update cycle (every 60 seconds)
+- All entities share the same cached data
+- No redundant API calls - temperatures, fans, power status all updated together
 
 ## Tests
 

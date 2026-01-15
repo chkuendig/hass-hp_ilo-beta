@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import logging
 
-import hpilo
-
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -14,9 +12,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.device_registry import CONNECTION_UPNP
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .sensor import HpIloData, DOMAIN
+from .coordinator import HpIloDataUpdateCoordinator
 
+DOMAIN = "hp_ilo"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -27,17 +27,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up HP iLO binary sensor entities."""
     
-    try:
-        port = int(entry.data['port'])
-        hp_ilo_data = HpIloData(
-            entry.data['host'], 
-            port, 
-            entry.data['username'], 
-            entry.data['password']
-        )
-    except ValueError as error:
-        _LOGGER.error("Failed to initialize HP iLO data: %s", error)
-        return
+    # Get the coordinator from hass.data
+    coordinator: HpIloDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     # config flow sets this to either UUID, serial number or None
     if (unique_id := entry.unique_id) is None:
@@ -58,50 +49,48 @@ async def async_setup_entry(
 
     binary_sensors = []
 
-    # Add power status binary sensor
-    try:
-        power_status = hp_ilo_data.data.get_host_power_status()
+    # Add power status binary sensor if power status is available
+    if coordinator.data and coordinator.data.power_status is not None:
         _LOGGER.info("Adding binary sensor for Server Power Status")
         binary_sensors.append(
             HpIloPowerStatusBinarySensor(
-                hass=hass,
-                hp_ilo_data=hp_ilo_data,
+                coordinator=coordinator,
                 entry=entry,
                 device_info=device_info
             )
         )
-    except (hpilo.IloError, hpilo.IloFeatureNotSupported) as error:
-        _LOGGER.info("Server Power Status binary sensor can't be loaded: %s", error)
 
-    async_add_entities(binary_sensors, True)
+    async_add_entities(binary_sensors, False)
 
 
-class HpIloPowerStatusBinarySensor(BinarySensorEntity):
+class HpIloPowerStatusBinarySensor(CoordinatorEntity[HpIloDataUpdateCoordinator], BinarySensorEntity):
     """Binary sensor for HP iLO server power status."""
 
     _attr_device_class = BinarySensorDeviceClass.POWER
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        hp_ilo_data: HpIloData,
+        coordinator: HpIloDataUpdateCoordinator,
         entry: ConfigEntry,
         device_info: DeviceInfo,
     ) -> None:
         """Initialize the binary sensor."""
-        self._hass = hass
-        self.hp_ilo_data = hp_ilo_data
-        self._entry_id = entry.entry_id
+        super().__init__(coordinator)
         self._attr_device_info = device_info
         self._attr_name = "Server Power"
         self._attr_unique_id = f"{entry.data['unique_id']}_server_power"
+        # Set initial state
+        self._update_state()
 
-    def update(self) -> None:
-        """Get the latest data from HP iLO."""
-        self.hp_ilo_data.update()
-        try:
-            power_status = self.hp_ilo_data.data.get_host_power_status()
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._update_state()
+        super()._handle_coordinator_update()
+
+    def _update_state(self) -> None:
+        """Update the binary sensor state from coordinator data."""
+        if not self.coordinator.data or self.coordinator.data.power_status is None:
+            self._attr_is_on = None
+        else:
             # get_host_power_status returns "ON" or "OFF"
-            self._attr_is_on = power_status == "ON"
-        except (hpilo.IloError, hpilo.IloCommunicationError) as error:
-            _LOGGER.error("Failed to get power status: %s", error)
+            self._attr_is_on = self.coordinator.data.power_status == "ON"

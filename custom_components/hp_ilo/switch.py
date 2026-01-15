@@ -7,14 +7,15 @@ import hpilo
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.device_registry import CONNECTION_UPNP
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .sensor import HpIloData, DOMAIN
+from .coordinator import HpIloDataUpdateCoordinator
 
+DOMAIN = "hp_ilo"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -25,17 +26,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up HP iLO switch entities."""
     
-    try:
-        port = int(entry.data['port'])
-        hp_ilo_data = HpIloData(
-            entry.data['host'], 
-            port, 
-            entry.data['username'], 
-            entry.data['password']
-        )
-    except ValueError as error:
-        _LOGGER.error("Failed to initialize HP iLO data: %s", error)
-        return
+    # Get the coordinator from hass.data
+    coordinator: HpIloDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     # config flow sets this to either UUID, serial number or None
     if (unique_id := entry.unique_id) is None:
@@ -56,26 +48,21 @@ async def async_setup_entry(
 
     switches = []
 
-    # Add power switch
-    try:
-        # Test that we can read power status
-        hp_ilo_data.data.get_host_power_status()
+    # Add power switch if power status is available
+    if coordinator.data and coordinator.data.power_status is not None:
         _LOGGER.info("Adding switch for Server Power Control")
         switches.append(
             HpIloPowerSwitch(
-                hass=hass,
-                hp_ilo_data=hp_ilo_data,
+                coordinator=coordinator,
                 entry=entry,
                 device_info=device_info
             )
         )
-    except (hpilo.IloError, hpilo.IloFeatureNotSupported) as error:
-        _LOGGER.info("Server Power switch can't be loaded: %s", error)
 
-    async_add_entities(switches, True)
+    async_add_entities(switches, False)
 
 
-class HpIloPowerSwitch(SwitchEntity):
+class HpIloPowerSwitch(CoordinatorEntity[HpIloDataUpdateCoordinator], SwitchEntity):
     """Switch for HP iLO server power control.
     
     This switch allows turning the server on and off via iLO.
@@ -91,15 +78,12 @@ class HpIloPowerSwitch(SwitchEntity):
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        hp_ilo_data: HpIloData,
+        coordinator: HpIloDataUpdateCoordinator,
         entry: ConfigEntry,
         device_info: DeviceInfo,
     ) -> None:
         """Initialize the switch."""
-        self._hass = hass
-        self.hp_ilo_data = hp_ilo_data
-        self._entry_id = entry.entry_id
+        super().__init__(coordinator)
         self._attr_device_info = device_info
         self._attr_name = "Server Power Control"
         self._attr_unique_id = f"{entry.data['unique_id']}_set_host_power"
@@ -107,27 +91,24 @@ class HpIloPowerSwitch(SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the server is powered on."""
-        return self._attr_is_on
-
-    def update(self) -> None:
-        """Get the latest power state from HP iLO."""
-        self.hp_ilo_data.update()
-        try:
-            power_status = self.hp_ilo_data.data.get_host_power_status()
-            # get_host_power_status returns "ON" or "OFF"
-            self._attr_is_on = power_status == "ON"
-        except (hpilo.IloError, hpilo.IloCommunicationError) as error:
-            _LOGGER.error("Failed to get power status: %s", error)
+        if not self.coordinator.data or not self.coordinator.data.power_status:
+            return None
+        return self.coordinator.data.power_status == "ON"
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn on the server."""
+        if not self.coordinator.data or not self.coordinator.data.ilo:
+            _LOGGER.error("No iLO connection available")
+            return
+            
         try:
-            await self._hass.async_add_executor_job(
-                self.hp_ilo_data.data.set_host_power,
+            await self.hass.async_add_executor_job(
+                self.coordinator.data.ilo.set_host_power,
                 True  # host_power=True to turn on
             )
-            self._attr_is_on = True
             _LOGGER.info("Successfully powered on server")
+            # Request a refresh to update the state
+            await self.coordinator.async_request_refresh()
         except (hpilo.IloError, hpilo.IloCommunicationError) as error:
             _LOGGER.error("Failed to power on server: %s", error)
             raise
@@ -138,13 +119,18 @@ class HpIloPowerSwitch(SwitchEntity):
         Note: This performs a graceful shutdown. For hard power off,
         use the press_pwr_btn button or hold_pwr_btn method.
         """
+        if not self.coordinator.data or not self.coordinator.data.ilo:
+            _LOGGER.error("No iLO connection available")
+            return
+            
         try:
-            await self._hass.async_add_executor_job(
-                self.hp_ilo_data.data.set_host_power,
+            await self.hass.async_add_executor_job(
+                self.coordinator.data.ilo.set_host_power,
                 False  # host_power=False to turn off
             )
-            self._attr_is_on = False
             _LOGGER.info("Successfully powered off server")
+            # Request a refresh to update the state
+            await self.coordinator.async_request_refresh()
         except (hpilo.IloError, hpilo.IloCommunicationError) as error:
             _LOGGER.error("Failed to power off server: %s", error)
             raise
