@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for HP iLO integration."""
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
@@ -24,22 +25,52 @@ UPDATE_INTERVAL = timedelta(seconds=60)
 @dataclass
 class HpIloData:
     """Class to hold all HP iLO data fetched in a single update cycle."""
-    
-    # Server health data (temperatures, fans, firmware info, etc.)
+
+    # Server health data (temperatures, fans, processors, memory, NIC, storage)
     health: dict[str, Any] | None = None
-    
+
     # Power status ("ON" or "OFF")
     power_status: str | None = None
-    
+
     # Power on time in minutes
     power_on_time: int | None = None
-    
+
     # Server name
     server_name: str | None = None
-    
-    # Host data (SMBIOS entries)
+
+    # Host data (SMBIOS entries: model, BIOS version, serial, memory DIMMs, etc.)
     host_data: list[dict] | None = None
-    
+
+    # Network settings (iLO management NIC: IP, MAC, DNS, gateway, etc.)
+    network_settings: dict | None = None
+
+    # iLO firmware version, type and license
+    fw_version: dict | None = None
+
+    # Present, min, max and average power readings in Watts
+    power_readings: dict | None = None
+
+    # UID indicator light status ("ON" / "OFF")
+    uid_status: str | None = None
+
+    # Server asset tag string (or None if not set)
+    asset_tag: str | None = None
+
+    # Power regulator / saver mode dict  e.g. {'host_power_saver': 'AUTO'}
+    power_saver: dict | None = None
+
+    # Power cap, alert thresholds and efficiency mode
+    pwreg: dict | None = None
+
+    # Whether server stays powered off after a critical temperature shutdown
+    critical_temp_remain_off: bool | None = None
+
+    # iLO event log entries (list of dicts, most-recent first)
+    ilo_event_log: list[dict] | None = None
+
+    # Integrated Management Log / server event log entries (most-recent first)
+    server_event_log: list[dict] | None = None
+
     # Raw iLO connection for commands (buttons, switch actions)
     ilo: hpilo.Ilo | None = None
 
@@ -60,7 +91,7 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
         self.port = int(entry.data["port"])
         self.username = entry.data["username"]
         self.password = entry.data["password"]
-        
+
         super().__init__(
             hass,
             _LOGGER,
@@ -70,12 +101,11 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
 
     async def _async_update_data(self) -> HpIloData:
         """Fetch data from HP iLO.
-        
-        This is called by the coordinator at the configured interval.
-        All entities will receive the same data from this single fetch.
+
+        Called by the coordinator at the configured interval.
+        All entities receive the same data from this single fetch.
         """
         try:
-            # Run the blocking iLO calls in the executor
             return await self.hass.async_add_executor_job(self._fetch_data)
         except hpilo.IloLoginFailed as err:
             raise UpdateFailed(f"Authentication failed: {err}") from err
@@ -87,50 +117,49 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
     def _fetch_data(self) -> HpIloData:
         """Fetch all data from HP iLO (runs in executor thread)."""
         _LOGGER.debug("Fetching data from HP iLO at %s:%s", self.host, self.port)
-        
-        # Create a new iLO connection
+
         ilo = hpilo.Ilo(
             hostname=self.host,
             login=self.username,
             password=self.password,
             port=self.port,
         )
-        
+
         data = HpIloData(ilo=ilo)
-        
-        # Fetch all the data we need in one batch
-        # Each of these is a separate API call, but they all happen
-        # in this single update cycle and the results are cached
-        
-        # Get embedded health (temperatures, fans, firmware)
-        try:
-            data.health = ilo.get_embedded_health()
-        except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
-            _LOGGER.debug("Could not get embedded health: %s", err)
-        
-        # Get power status
-        try:
-            data.power_status = ilo.get_host_power_status()
-        except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
-            _LOGGER.debug("Could not get power status: %s", err)
-        
-        # Get power on time
-        try:
-            data.power_on_time = ilo.get_server_power_on_time()
-        except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
-            _LOGGER.debug("Could not get power on time: %s", err)
-        
-        # Get server name
-        try:
-            data.server_name = ilo.get_server_name()
-        except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
-            _LOGGER.debug("Could not get server name: %s", err)
-        
-        # Get host data (SMBIOS entries for model, BIOS version, etc.)
-        try:
-            data.host_data = ilo.get_host_data()
-        except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
-            _LOGGER.debug("Could not get host data: %s", err)
-        
+
+        def _try(label, fn):
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    return fn()
+            except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
+                _LOGGER.debug("Could not get %s: %s", label, err)
+            return None
+
+        data.health           = _try("embedded health",       ilo.get_embedded_health)
+        data.power_status     = _try("power status",          ilo.get_host_power_status)
+        data.power_on_time    = _try("power on time",         ilo.get_server_power_on_time)
+        data.server_name      = _try("server name",           ilo.get_server_name)
+        data.network_settings = _try("network settings",      ilo.get_network_settings)
+        data.host_data        = _try("host data",             ilo.get_host_data)
+        data.fw_version       = _try("firmware version",      ilo.get_fw_version)
+        data.power_readings   = _try("power readings",        ilo.get_power_readings)
+        data.uid_status       = _try("UID status",            ilo.get_uid_status)
+        data.power_saver      = _try("power saver status",    ilo.get_host_power_saver_status)
+        data.pwreg            = _try("power regulation",      ilo.get_pwreg)
+        data.ilo_event_log    = _try("iLO event log",         ilo.get_ilo_event_log)
+        data.server_event_log = _try("server event log",      ilo.get_server_event_log)
+
+        raw = _try("critical temp remain off", ilo.get_critical_temp_remain_off)
+        if raw is not None:
+            data.critical_temp_remain_off = (
+                raw.get("critical_temp_remain_off", "No").upper() == "YES"
+            )
+
+        # asset tag returns {'asset_tag': 'NL00001'} or {'asset_tag': None}
+        raw_tag = _try("asset tag", ilo.get_asset_tag)
+        if raw_tag is not None:
+            data.asset_tag = raw_tag.get("asset_tag")
+
         _LOGGER.debug("Successfully fetched data from HP iLO")
         return data

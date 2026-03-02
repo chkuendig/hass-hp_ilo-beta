@@ -61,6 +61,18 @@ async def async_setup_entry(
             entry=entry,
             device_info=device_info
         ),
+        HpIloClearEventLogButton(
+            coordinator=coordinator,
+            entry=entry,
+            device_info=device_info,
+            log_type="ilo",
+        ),
+        HpIloClearEventLogButton(
+            coordinator=coordinator,
+            entry=entry,
+            device_info=device_info,
+            log_type="server",
+        ),
     ]
 
     async_add_entities(buttons, False)
@@ -77,6 +89,7 @@ class HpIloPowerButton(ButtonEntity):
     (e.g., if Home Assistant is running on the same machine).
     """
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:power"
     _attr_entity_registry_enabled_default = False  # Disabled by default - destructive action
 
@@ -127,6 +140,7 @@ class HpIloPowerButtonHold(ButtonEntity):
     (e.g., if Home Assistant is running on the same machine).
     """
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:power-cycle"
     _attr_entity_registry_enabled_default = False  # Disabled by default - destructive action
 
@@ -173,6 +187,7 @@ class HpIloResetButton(ButtonEntity):
     (e.g., if Home Assistant is running on the same machine).
     """
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:restart"
     _attr_entity_registry_enabled_default = False  # Disabled by default - disruptive action
 
@@ -206,4 +221,57 @@ class HpIloResetButton(ButtonEntity):
             hpilo.IloCommunicationError,
         ) as error:
             _LOGGER.error("Failed to reset server: %s", error)
+            raise
+
+
+class HpIloClearEventLogButton(ButtonEntity):
+    """Button to clear an iLO or server (IML) event log.
+
+    Clearing the iLO event log calls ilo.clear_ilo_event_log() (RIBCL CLEAR_EVENTLOG).
+    Clearing the server event log calls ilo.clear_server_event_log() (RIBCL CLEAR_IML).
+
+    Both buttons are enabled by default — clearing a log is reversible (data is gone,
+    but it doesn't affect server operation).
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:notification-clear-all"
+
+    def __init__(
+        self,
+        coordinator: HpIloDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_info: DeviceInfo,
+        log_type: str,  # "ilo" or "server"
+    ) -> None:
+        self.coordinator = coordinator
+        self._attr_device_info = device_info
+        self._log_type = log_type
+        if log_type == "ilo":
+            self._attr_name = "Clear iLO Event Log"
+            self._attr_unique_id = f"{entry.data['unique_id']}_clear_ilo_event_log"
+        else:
+            self._attr_name = "Clear Server Event Log"
+            self._attr_unique_id = f"{entry.data['unique_id']}_clear_server_event_log"
+
+    async def async_press(self) -> None:
+        """Clear the selected event log and refresh coordinator data."""
+        if not self.coordinator.data or not self.coordinator.data.ilo:
+            _LOGGER.error("No iLO connection available")
+            return
+
+        ilo = self.coordinator.data.ilo
+        method = (
+            ilo.clear_ilo_event_log
+            if self._log_type == "ilo"
+            else ilo.clear_server_event_log
+        )
+        log_label = "iLO event log" if self._log_type == "ilo" else "server event log"
+
+        try:
+            await self.hass.async_add_executor_job(method)
+            _LOGGER.info("Successfully cleared %s", log_label)
+            await self.coordinator.async_request_refresh()
+        except (hpilo.IloError, hpilo.IloCommunicationError) as error:
+            _LOGGER.error("Failed to clear %s: %s", log_label, error)
             raise

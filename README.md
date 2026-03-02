@@ -12,9 +12,62 @@ A drop-in replacement for the [official HP iLO integration](https://www.home-ass
 - **Binary sensor for power state** — Proper ON/OFF binary sensor instead of enum
 - **Safe defaults** — All power control entities disabled by default to prevent accidental shutdowns
 
-# Installation
+<h3>🌡️ Hardware Health Sensors</h3>
+<ul>
+<li><strong>Temperature sensors</strong>: All thermal zones exposed with number prefix stripped from display names (e.g. <code>01-Inlet Ambient</code> → <code>Inlet Ambient</code>)</li>
+<li><strong>Fan sensors</strong>: Per-fan speed as percentage</li>
+<li><strong>Memory DIMM sensors</strong>: Per installed DIMM — size @ speed as state (e.g. <code>8192 MB @ 1600 MHz</code>), DDR type inferred from speed, location as attribute</li>
+<li><strong>Processor sensors</strong>: Status per CPU plus dedicated entities for name, speed, execution technology, and memory technology</li>
+<li><strong>NIC sensor</strong>: MAC, IP, gateway, DNS, speed/duplex (merged from <code>nic_information</code> and <code>network_settings</code>)</li>
+<li><strong>Storage controller sensors</strong>: Per controller with drive and logical volume details as attributes</li>
+<li><strong>BIOS/Hardware aggregate sensor</strong>: Rolled-up hardware health</li>
+</ul>
+<h3>🔧 Firmware Information</h3>
+<p>All firmware components exposed as individual diagnostic sensors, discovered dynamically (no hardcoded key names, works across server generations):</p>
+<ul>
+<li>System ROM &amp; Redundant System ROM (version + date)</li>
+<li>System ROM Bootblock</li>
+<li>Intelligent Provisioning</li>
+<li>Intelligent Platform Abstraction Data</li>
+<li>Server Platform Services (SPS) Firmware</li>
+<li>System Programmable Logic Device</li>
+</ul>
+<h3>📋 Event Logs</h3>
+<ul>
+<li><strong>iLO Event Log</strong> &amp; <strong>Server Event Log</strong> sensors: worst severity across all entries as state, full log (up to 50 entries, newest first) in attributes</li>
+<li>Per-field sensors for last critical entry: description, timestamp, class</li>
+<li><strong>Clear iLO Event Log</strong> &amp; <strong>Clear Server Event Log</strong> buttons (requires <code>CONFIG_ILO_PRIV</code> on the iLO user — see below)</li>
+</ul>
+<h3>🔍 iLO Self-Tests (Health-at-a-Glance)</h3>
+<p>One sensor per iLO subsystem showing the iLO's own rolled-up self-test result (OK / Degraded / Failed) for: BIOS, fans, temperature, power supplies, processor, memory, network, storage.</p>
+<h3>⚡ Power Monitoring</h3>
+<ul>
+<li>Present, Average, Minimum, Maximum power readings (Watts) — where supported by iLO firmware</li>
+<li>Power Saver mode (AUTO / OS Control / Static High / Static Low)</li>
+<li>Power Cap mode with efficiency mode and alert thresholds</li>
+</ul>
+<h3>🏷️ System Identity</h3>
+<ul>
+<li>iLO Firmware Version (with management processor type, license, date)</li>
+<li>Asset Tag</li>
+<li>Server Power-On Time</li>
+</ul>
+<h3>🔴 Binary Sensors</h3>
+<ul>
+<li>Per-subsystem health (Memory, Processor, Network, Storage, Temperature, Fan) — fires when any status is Degraded/Failed/Critical/Warning</li>
+<li>UID Locator Light status</li>
+<li>Critical Temp Remain Off configuration</li>
+</ul>
 
+# Installation
 Add this repo as a custom repo to HACS and the integration should show up. 
+
+<h2>Required User Actions</h2>
+<h3>iLO User Privileges for Log Clearing</h3>
+<p>The <strong>Clear iLO Event Log</strong> and <strong>Clear Server Event Log</strong> buttons require the <strong>Configure iLO Settings (<code>CONFIG_ILO_PRIV</code>)</strong> privilege.</p>
+<p>To grant it: iLO web UI → <strong>Administration → User Administration</strong> → select the HA user → enable <strong>"Configure iLO Settings"</strong> → Save.</p>
+<p>Without this privilege, pressing the buttons will produce a <code>CONFIG_ILO_PRIV required</code> error in the HA log — all other entities work with standard read-only access.</p>
+<hr>
 
 # Features
 
@@ -104,16 +157,29 @@ pytest tests/test_config_flow.py -v
 # Run with coverage
 pytest tests/ --cov=custom_components.hp_ilo
 ```
+<hr>
+<h2>Bug Fixes Included</h2>
 
----
+Bug | Fix
+-- | --
+IloWarning ("No Asset Tag Information") polluting HA logs | Suppressed via warnings.catch_warnings() around every API call
+Storage sensor crash when health['storage'] is None | Added isinstance(..., dict) guard
+NIC sensor showing unknown | Falls back to MAC address when IP is N/A
+NIC MAC mismatch skipping network_settings merge | Removed cross-check — management port and shared NIC use adjacent MACs by design
+Storage Health binary sensor showing unknown | Returns False instead of None when data is absent
+Memory sensor crash on Gen8 | Rewrote to parse memory_components tuple structure instead of memory_details_summary
+Memory Other status triggering health fault | Other excluded from _FAULT_STATUSES
+Firmware sensors not found on Gen8 | Dynamic key discovery replaces hardcoded Gen8+ key names
+Temperature labels with number prefix | ^\d+- stripped from display name, original kept as unique ID
+Entity names missing device prefix | _attr_has_entity_name = True added to base classes
+Health/config entities not in diagnostics panel | EntityCategory.DIAGNOSTIC applied to all non-primary entities
 
-# TODO
+<h2>Tested On</h2>
+<ul>
+<li>HP ProLiant MicroServer Gen8</li>
+<li>iLO 4 firmware <code>2.82 Feb 06 2023</code></li>
+<li>Intel Xeon E3-1220 V2, mixed DDR3 DIMMs</li>
+<li>Home Assistant with <code>python-hpilo</code></li>
+</ul>
 
-- **Configuration improvements**
-  - Update of IPs and Hostname from discovery in case any of them change
-  - Import of existing sensors from configuration.yaml
-  - Option to enable/disable what sensors and other entities/platforms are added
 
-- **Strings and Translations** — Config flow should support i18n
-
-- **Firmware Upgrades** — Buttons for [firmware upgrades](https://seveas.github.io/python-hpilo/firmware.html) using the python-hpilo library
