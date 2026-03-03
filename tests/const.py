@@ -120,6 +120,24 @@ MOCK_ILO_EMBEDDED_HEALTH = {
         "iLO": "2.53 Feb 17 2017",
         "Power Management Controller": "1.0.0",
     },
+    "nic_information": {
+        "iLO 4 Port 1 (BFF6)": {
+            "network_port": "Port 1",
+            "port_description": "iLO 4",
+            "location": "Embedded",
+            "mac_address": "3C:A8:2A:A0:BF:F6",
+            "ip_address": "192.168.178.116",
+            "status": "OK",
+        },
+        "HP Ethernet 1Gb 2-port 332i Adapter Port 2 (BFF5)": {
+            "network_port": "Port 2",
+            "port_description": "HP Ethernet 1Gb 2-port 332i Adapter",
+            "location": "Embedded",
+            "mac_address": "3C:A8:2A:A0:BF:F5",
+            "ip_address": "169.254.15.4",
+            "status": "Link Down",
+        },
+    },
     "glance-seperator": None,
 }
 
