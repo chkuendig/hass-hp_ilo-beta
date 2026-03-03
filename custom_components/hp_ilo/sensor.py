@@ -229,6 +229,7 @@ async def async_setup_entry(
 class HpIloTemperatureSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
     """Representation of an HP iLO temperature sensor."""
 
+    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -269,6 +270,7 @@ class HpIloTemperatureSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sens
 class HpIloFanSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
     """Representation of an HP iLO fan sensor."""
 
+    _attr_has_entity_name = True
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:fan"
@@ -309,6 +311,7 @@ class HpIloFanSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity
 class HpIloPowerOnTimeSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
     """Representation of an HP iLO power on time sensor."""
 
+    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_suggested_unit_of_measurement = UnitOfTime.DAYS
@@ -336,6 +339,7 @@ class HpIloPowerOnTimeSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sens
 class HpIloPowerReadingSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
     """Representation of an HP iLO power reading sensor."""
 
+    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.POWER
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -372,6 +376,7 @@ class HpIloPowerReadingSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sen
 class HpIloNicSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
     """Representation of an HP iLO NIC status sensor."""
 
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:ethernet"

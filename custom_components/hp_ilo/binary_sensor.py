@@ -66,6 +66,7 @@ async def async_setup_entry(
 class HpIloPowerStatusBinarySensor(CoordinatorEntity[HpIloDataUpdateCoordinator], BinarySensorEntity):
     """Binary sensor for HP iLO server power status."""
 
+    _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.POWER
 
     def __init__(

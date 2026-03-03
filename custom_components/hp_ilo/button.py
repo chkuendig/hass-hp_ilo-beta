@@ -77,6 +77,7 @@ class HpIloPowerButton(ButtonEntity):
     (e.g., if Home Assistant is running on the same machine).
     """
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:power"
     _attr_entity_registry_enabled_default = False  # Disabled by default - destructive action
 
@@ -127,6 +128,7 @@ class HpIloPowerButtonHold(ButtonEntity):
     (e.g., if Home Assistant is running on the same machine).
     """
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:power-cycle"
     _attr_entity_registry_enabled_default = False  # Disabled by default - destructive action
 
@@ -173,6 +175,7 @@ class HpIloResetButton(ButtonEntity):
     (e.g., if Home Assistant is running on the same machine).
     """
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:restart"
     _attr_entity_registry_enabled_default = False  # Disabled by default - disruptive action
 
