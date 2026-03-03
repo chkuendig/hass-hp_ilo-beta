@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 import logging
 from typing import Any
+from xml.etree import ElementTree
 
 import hpilo
 
@@ -43,6 +44,9 @@ class HpIloData:
     # Power readings (present, average, min, max in Watts)
     power_readings: dict[str, Any] | None = None
 
+    # NIC information (keyed by "{port_description} {network_port} ({mac_suffix})")
+    nic_information: dict[str, dict[str, Any]] | None = None
+
     # Raw iLO connection for commands (buttons, switch actions)
     ilo: hpilo.Ilo | None = None
 
@@ -70,6 +74,26 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
             name=f"HP iLO ({self.host})",
             update_interval=UPDATE_INTERVAL,
         )
+
+    @staticmethod
+    def _parse_nic_information(ilo: hpilo.Ilo, element: ElementTree.Element) -> dict[str, dict[str, Any]]:
+        """Parse NIC information from embedded health XML.
+
+        The upstream python-hpilo library returns a list, which its process()
+        function then converts to a dict keyed by 'location'. When multiple
+        NICs share the same location (e.g. "Embedded"), only the last one
+        survives. By returning a dict here, process() leaves it untouched.
+        """
+        result: dict[str, dict[str, Any]] = {}
+        for elt in element:
+            nic = ilo._element_children_to_dict(elt)
+            mac = nic.get("mac_address", "")
+            mac_suffix = mac.replace(":", "")[-4:].upper() if mac else ""
+            port_desc = nic.get("port_description", "Unknown")
+            net_port = nic.get("network_port", "Unknown")
+            key = f"{port_desc} {net_port} ({mac_suffix})"
+            result[key] = nic
+        return {"nic_information": result}
 
     async def _async_update_data(self) -> HpIloData:
         """Fetch data from HP iLO.
@@ -105,11 +129,22 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
         # Each of these is a separate API call, but they all happen
         # in this single update cycle and the results are cached
         
+        # Monkey-patch NIC parser to return a dict instead of a list.
+        # This prevents the upstream process() from collapsing multiple
+        # NICs that share the same 'location' value into one entry.
+        nic_parser = lambda element: self._parse_nic_information(ilo, element)  # noqa: E731
+        ilo._parse_get_embedded_health_data_nic_information = nic_parser
+        ilo._parse_get_embedded_health_data_nic_infomation = nic_parser
+
         # Get embedded health (temperatures, fans, firmware)
         try:
             data.health = ilo.get_embedded_health()
         except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
             _LOGGER.debug("Could not get embedded health: %s", err)
+
+        # Extract NIC information from health data (populated by our monkey-patch)
+        if data.health and "nic_information" in data.health:
+            data.nic_information = data.health["nic_information"]
         
         # Get power status
         try:

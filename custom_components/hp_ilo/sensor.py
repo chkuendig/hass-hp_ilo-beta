@@ -38,7 +38,7 @@ from homeassistant.const import (
 from homeassistant.helpers.device_registry import CONNECTION_UPNP
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
@@ -202,6 +202,27 @@ async def async_setup_entry(
                     )
                 )
 
+    # NIC status sensors
+    if data.nic_information:
+        for nic_key, nic_data in data.nic_information.items():
+            mac = nic_data.get("mac_address", "")
+            if not mac or mac == "N/A":
+                continue
+            port_desc = nic_data.get("port_description", "Unknown")
+            net_port = nic_data.get("network_port", "Unknown")
+            _LOGGER.info("Adding sensor for NIC %s %s", port_desc, net_port)
+            sensors.append(
+                HpIloNicSensor(
+                    coordinator=coordinator,
+                    entry=entry,
+                    device_info=device_info,
+                    nic_key=nic_key,
+                    mac_address=mac,
+                    port_description=port_desc,
+                    network_port=net_port,
+                )
+            )
+
     async_add_entities(sensors, False)
 
 
@@ -346,3 +367,57 @@ class HpIloPowerReadingSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sen
         if isinstance(reading, (list, tuple)) and len(reading) > 0:
             return reading[0]
         return reading
+
+
+class HpIloNicSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
+    """Representation of an HP iLO NIC status sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:ethernet"
+
+    def __init__(
+        self,
+        coordinator: HpIloDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_info: DeviceInfo,
+        nic_key: str,
+        mac_address: str,
+        port_description: str,
+        network_port: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._nic_key = nic_key
+        self._attr_device_info = device_info
+        self._attr_name = f"NIC {port_description} {network_port}"
+        mac_id = mac_address.replace(":", "").lower()
+        self._attr_unique_id = f"{entry.data['unique_id']}_nic_{mac_id}"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the NIC status string."""
+        nic = self._get_nic_data()
+        if nic is None:
+            return None
+        return nic.get("status")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional NIC attributes."""
+        nic = self._get_nic_data()
+        if nic is None:
+            return None
+        return {
+            "ip_address": nic.get("ip_address"),
+            "mac_address": nic.get("mac_address"),
+            "network_port": nic.get("network_port"),
+            "port_description": nic.get("port_description"),
+            "location": nic.get("location"),
+        }
+
+    def _get_nic_data(self) -> dict[str, Any] | None:
+        """Return the NIC dict for this sensor from coordinator data."""
+        if not self.coordinator.data or not self.coordinator.data.nic_information:
+            return None
+        return self.coordinator.data.nic_information.get(self._nic_key)
