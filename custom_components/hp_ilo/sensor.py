@@ -31,6 +31,7 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VALUE_TEMPLATE,
     PERCENTAGE,
+    UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
 )
@@ -180,6 +181,27 @@ async def async_setup_entry(
             )
         )
 
+    # Power reading sensors
+    if data.power_readings is not None:
+        power_reading_definitions = {
+            "present_power_reading": "Server Power (Present)",
+            "average_power_reading": "Server Power (Average)",
+            "maximum_power_reading": "Server Power (Maximum)",
+            "minimum_power_reading": "Server Power (Minimum)",
+        }
+        for reading_key, reading_name in power_reading_definitions.items():
+            if reading_key in data.power_readings:
+                _LOGGER.info("Adding sensor for %s", reading_name)
+                sensors.append(
+                    HpIloPowerReadingSensor(
+                        coordinator=coordinator,
+                        entry=entry,
+                        device_info=device_info,
+                        reading_key=reading_key,
+                        reading_name=reading_name,
+                    )
+                )
+
     async_add_entities(sensors, False)
 
 
@@ -288,3 +310,39 @@ class HpIloPowerOnTimeSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sens
         if not self.coordinator.data:
             return None
         return self.coordinator.data.power_on_time
+
+
+class HpIloPowerReadingSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
+    """Representation of an HP iLO power reading sensor."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: HpIloDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_info: DeviceInfo,
+        reading_key: str,
+        reading_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._reading_key = reading_key
+        self._attr_device_info = device_info
+        self._attr_name = reading_name
+        self._attr_unique_id = f"{entry.data['unique_id']}_{reading_key}"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the current power reading in Watts."""
+        if not self.coordinator.data or not self.coordinator.data.power_readings:
+            return None
+
+        reading = self.coordinator.data.power_readings.get(self._reading_key)
+        if reading is None:
+            return None
+        if isinstance(reading, (list, tuple)) and len(reading) > 0:
+            return reading[0]
+        return reading

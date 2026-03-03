@@ -123,3 +123,11 @@ MOCK_ILO_EMBEDDED_HEALTH = {
     "glance-seperator": None,
 }
 
+# get_power_readings() response
+MOCK_ILO_POWER_READINGS = {
+    "present_power_reading": (108, "Watts"),
+    "average_power_reading": (106, "Watts"),
+    "maximum_power_reading": (157, "Watts"),
+    "minimum_power_reading": (106, "Watts"),
+}
+

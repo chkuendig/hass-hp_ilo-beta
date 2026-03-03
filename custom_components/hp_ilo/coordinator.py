@@ -39,7 +39,10 @@ class HpIloData:
     
     # Host data (SMBIOS entries)
     host_data: list[dict] | None = None
-    
+
+    # Power readings (present, average, min, max in Watts)
+    power_readings: dict[str, Any] | None = None
+
     # Raw iLO connection for commands (buttons, switch actions)
     ilo: hpilo.Ilo | None = None
 
@@ -131,6 +134,12 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
             data.host_data = ilo.get_host_data()
         except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
             _LOGGER.debug("Could not get host data: %s", err)
-        
+
+        # Get power readings (present, average, min, max power in Watts)
+        try:
+            data.power_readings = ilo.get_power_readings()
+        except (hpilo.IloError, hpilo.IloFeatureNotSupported) as err:
+            _LOGGER.debug("Could not get power readings: %s", err)
+
         _LOGGER.debug("Successfully fetched data from HP iLO")
         return data

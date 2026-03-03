@@ -8,6 +8,7 @@ from .const import (
     MOCK_ILO_HOST_DATA,
     MOCK_ILO_EMBEDDED_HEALTH,
     MOCK_ILO_FW_VERSION,
+    MOCK_ILO_POWER_READINGS,
 )
 
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -40,6 +41,7 @@ def mock_hpilo_fixture():
         mock_ilo.get_fw_version.return_value = MOCK_ILO_FW_VERSION
         mock_ilo.get_host_data.return_value = MOCK_ILO_HOST_DATA
         mock_ilo.get_embedded_health.return_value = MOCK_ILO_EMBEDDED_HEALTH
+        mock_ilo.get_power_readings.return_value = MOCK_ILO_POWER_READINGS
         mock_ilo_class.return_value = mock_ilo
         yield mock_ilo
 
