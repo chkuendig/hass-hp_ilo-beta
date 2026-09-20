@@ -163,18 +163,17 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     password=user_input[CONF_PASSWORD]
                 ) 
                 # Verify connection and get serial number for unique_id
-                try:
-                    host_data = self.ilo.get_host_data()
-                    # Extract serial number from host data for stable unique_id
-                    # host_data is a list with one dict containing 'Serial Number' field
-                    if host_data and len(host_data) > 0:
-                        serial_number = host_data[0].get("Serial Number")
-                        if serial_number:
-                            # Use combination of host and serial number for unique_id
-                            # This ensures uniqueness across network changes
-                            self.config[CONF_UNIQUE_ID] = f"{self.config[CONF_HOST]}_{serial_number}"
-                except Exception as e:
-                    _LOGGER.error("Failed to get host data from iLO: %s", e)
+                host_data = await self.hass.async_add_executor_job(
+                    self.ilo.get_host_data
+                )
+                # Extract serial number from host data for stable unique_id
+                # host_data is a list with one dict containing 'Serial Number' field
+                if host_data and len(host_data) > 0:
+                    serial_number = host_data[0].get("Serial Number")
+                    if serial_number:
+                        # Use combination of host and serial number for unique_id
+                        # This ensures uniqueness across network changes
+                        self.config[CONF_UNIQUE_ID] = f"{self.config[CONF_HOST]}_{serial_number}"
                 
                 self.config[CONF_USERNAME] = user_input[CONF_USERNAME]
                 self.config[CONF_PASSWORD] = user_input[CONF_PASSWORD]
