@@ -1,7 +1,9 @@
 """Support for information from HP iLO sensors."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 import logging
+import math
 from typing import Any
 
 import hpilo
@@ -14,6 +16,7 @@ from homeassistant.components.sensor import (
     DEVICE_CLASSES_SCHEMA,
     PLATFORM_SCHEMA,
     STATE_CLASSES_SCHEMA,
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -31,16 +34,18 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VALUE_TEMPLATE,
     PERCENTAGE,
+    UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
 )
 from homeassistant.helpers.device_registry import CONNECTION_UPNP
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.util import dt as dt_util
 
 from .coordinator import HpIloDataUpdateCoordinator, HpIloData
 
@@ -48,6 +53,11 @@ DOMAIN = "hp_ilo"
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_NAME = "HP ILO"
+
+# Longest interval between two valid power samples that is still integrated into
+# the energy counter. Longer gaps (iLO unreachable, Home Assistant stopped, ...)
+# are skipped rather than extrapolated, so the counter never jumps.
+MAX_INTEGRATION_GAP = timedelta(minutes=5)
 
 SENSOR_TYPES = {
     "server_name": ["Server Name", "get_server_name"],
@@ -201,6 +211,17 @@ async def async_setup_entry(
                         reading_name=reading_name,
                     )
                 )
+
+        # iLO has no cumulative energy counter: estimate it from the present power
+        if "present_power_reading" in data.power_readings:
+            _LOGGER.info("Adding sensor for Server Energy")
+            sensors.append(
+                HpIloEnergySensor(
+                    coordinator=coordinator,
+                    entry=entry,
+                    device_info=device_info,
+                )
+            )
 
     # NIC status sensors
     if data.nic_information:
@@ -371,6 +392,101 @@ class HpIloPowerReadingSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sen
         if isinstance(reading, (list, tuple)) and len(reading) > 0:
             return reading[0]
         return reading
+
+
+class HpIloEnergySensor(CoordinatorEntity[HpIloDataUpdateCoordinator], RestoreSensor):
+    """Energy consumed by the server, estimated from the present power reading.
+
+    iLO does not expose a cumulative energy counter, so the instantaneous power
+    is integrated over time with the trapezoidal rule on every coordinator
+    update. The total is restored after a restart. Intervals during which no
+    valid reading is available (iLO unreachable, Home Assistant not running)
+    are not counted, so the value never jumps or goes back to zero.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_suggested_display_precision = 3
+
+    def __init__(
+        self,
+        coordinator: HpIloDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_info: DeviceInfo,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_device_info = device_info
+        self._attr_name = "Server Energy"
+        self._attr_unique_id = f"{entry.data['unique_id']}_energy"
+        self._energy_kwh = 0.0
+        self._last_sample: tuple[datetime, float] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the previous total and take the first power sample."""
+        await super().async_added_to_hass()
+        last_data = await self.async_get_last_sensor_data()
+        if last_data is not None and last_data.native_unit_of_measurement in (
+            None,
+            UnitOfEnergy.KILO_WATT_HOUR,
+        ):
+            try:
+                restored = float(last_data.native_value)
+            except (TypeError, ValueError):
+                restored = None
+            if restored is not None and math.isfinite(restored) and restored >= 0:
+                self._energy_kwh = restored
+        self._integrate()
+
+    @property
+    def available(self) -> bool:
+        """Return True if a valid power reading was received."""
+        return super().available and self._present_power() is not None
+
+    @property
+    def native_value(self) -> float:
+        """Return the energy consumed so far, in kWh."""
+        return round(self._energy_kwh, 6)
+
+    def _present_power(self) -> float | None:
+        """Return the present power reading in Watts, if valid."""
+        if not self.coordinator.data or not self.coordinator.data.power_readings:
+            return None
+        reading = self.coordinator.data.power_readings.get("present_power_reading")
+        if isinstance(reading, (list, tuple)):
+            reading = reading[0] if reading else None
+        try:
+            power = float(reading)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(power) or power < 0:
+            return None
+        return power
+
+    def _integrate(self) -> None:
+        """Add the energy since the previous sample (trapezoidal rule)."""
+        power = self._present_power()
+        if power is None:
+            return
+        now = dt_util.utcnow()
+        if self._last_sample is not None:
+            last_time, last_power = self._last_sample
+            elapsed = now - last_time
+            if elapsed == timedelta(0):
+                return
+            if timedelta(0) < elapsed <= MAX_INTEGRATION_GAP:
+                self._energy_kwh += (
+                    (last_power + power) / 2 * elapsed.total_seconds() / 3_600_000
+                )
+        self._last_sample = (now, power)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Integrate the new power reading and update the state."""
+        self._integrate()
+        super()._handle_coordinator_update()
 
 
 class HpIloNicSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity):
