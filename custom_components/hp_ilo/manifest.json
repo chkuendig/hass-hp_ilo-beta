@@ -12,7 +12,7 @@
     "hp_ilo"
   ],
   "requirements": [
-    "python-hpilo==4.4.3"
+    "python-hpilo>=4.4.3"
   ],
   "ssdp": [
     {
