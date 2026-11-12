@@ -1,4 +1,5 @@
 """Config flow for HpIlo devices."""
+import ipaddress
 import logging
 from urllib.parse import urlparse
 import voluptuous as vol
@@ -11,6 +12,15 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CON
 from .sensor import SENSOR_TYPES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_ip_address(value: str | None) -> bool:
+    """Return True if value is an IP address literal (not a hostname)."""
+    try:
+        ipaddress.ip_address(value or "")
+    except ValueError:
+        return False
+    return True
 
 
 class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -75,7 +85,21 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._async_abort_entries_match({CONF_HOST: self.config[CONF_HOST]})
 
         await self.async_set_unique_id(self.config[CONF_UNIQUE_ID])
-        self._abort_if_unique_id_configured(updates=self.config)
+        # A device that is already configured must not be overwritten by what it
+        # announces: SSDP advertises the plain HTTP port (80) and an IP address,
+        # whereas the user configured the SSL port (e.g. 443) and maybe a hostname.
+        # Only follow an IP address change, and only if a bare IP was configured.
+        updates = None
+        entry = self.hass.config_entries.async_entry_for_domain_unique_id(
+            self.handler, self.unique_id
+        )
+        if (
+            entry is not None
+            and _is_ip_address(entry.data.get(CONF_HOST))
+            and entry.data.get(CONF_HOST) != self.config[CONF_HOST]
+        ):
+            updates = {CONF_HOST: self.config[CONF_HOST]}
+        self._abort_if_unique_id_configured(updates=updates)
 
 
 
