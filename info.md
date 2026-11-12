@@ -11,7 +11,7 @@ _Custom component to integrate HP iLO servers with Home Assistant._
 | Platform | Description |
 |----------|-------------|
 | `binary_sensor` | Server power state (ON/OFF) |
-| `sensor` | Temperature sensors, fan speed sensors, power-on time |
+| `sensor` | Temperature sensors, fan speed sensors, power-on time, power readings, estimated energy (kWh) |
 | `switch` | Server power control (turn on/off) |
 | `button` | Power button press and hold |
 

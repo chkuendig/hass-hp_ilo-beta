@@ -7,6 +7,7 @@ A drop-in replacement for the [official HP iLO integration](https://www.home-ass
 - **Config flow** — Set up via the UI instead of YAML configuration
 - **Auto-discovery** — Automatically discovers iLO devices on your network via SSDP
 - **Statistics support** — Proper `device_class` and `state_class` for long-term statistics ([PR #65900](https://github.com/home-assistant/core/pull/65900))
+- **Energy (kWh) sensor** — Estimated energy consumption of the server, usable in the Energy dashboard
 - **Power control switch** — Turn server on/off via `set_host_power()` ([PR #32209](https://github.com/home-assistant/core/pull/32209))
 - **Power button entities** — Simulate physical power button press, hold (force off), and server reset
 - **Binary sensor for power state** — Proper ON/OFF binary sensor instead of enum
@@ -44,7 +45,7 @@ Basic Device seems to be the one most common and is already supported by Home As
 Platform | Description
 -- | --
 `binary_sensor` | Server power state (ON/OFF).
-`sensor` | Temperature sensors, fan speed sensors, power-on time.
+`sensor` | Temperature sensors, fan speed sensors, power-on time, power readings, estimated energy (kWh), NIC status.
 `switch` | Server power control (turn on/off).
 `button` | Power button press, hold, and server reset.
 
@@ -56,6 +57,14 @@ The existing implementation includes:
 - Button for power button press (graceful shutdown/power on)
 - Button for power button hold (force power off)
 - Button for server reset (warm reboot)
+
+### Energy consumption (kWh)
+
+iLO only reports instantaneous power (present / average / minimum / maximum, in Watts) and has no cumulative energy counter. The **Server Energy** sensor (`device_class: energy`, `state_class: total_increasing`, kWh) therefore integrates the *present* power reading over time with the trapezoidal rule at every update (every 60 seconds). It can be selected as an individual device in the Energy dashboard.
+
+- The total is restored after a restart of Home Assistant (a crash can lose the last few minutes, as for any restored entity).
+- If two valid readings are more than 5 minutes apart (iLO unreachable, Home Assistant stopped...), the gap is **not** counted: the value never jumps and never goes back to zero. The sensor shows as unavailable while iLO returns no valid reading.
+- Accuracy is that of a 60 s sampling of the iLO power meter: it is an estimate, not a metered value. It is not retroactive: counting starts when the entity is created.
 
 ### ⚠️ Power Control Entities - Disabled by Default
 
