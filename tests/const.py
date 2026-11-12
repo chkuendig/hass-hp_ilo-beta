@@ -3,7 +3,6 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
     CONF_PORT,
-    CONF_PROTOCOL,
     CONF_USERNAME,
 )
 
@@ -11,7 +10,6 @@ from homeassistant.const import (
 MOCK_CONFIG_USER_INPUT = {
     CONF_HOST: "192.168.1.100",
     CONF_PORT: 443,
-    CONF_PROTOCOL: "https",
 }
 
 MOCK_CONFIG_AUTH_INPUT = {
@@ -22,7 +20,6 @@ MOCK_CONFIG_AUTH_INPUT = {
 MOCK_CONFIG_FULL = {
     CONF_HOST: "192.168.1.100",
     CONF_PORT: 443,
-    CONF_PROTOCOL: "https",
     CONF_USERNAME: "Administrator",
     CONF_PASSWORD: "test_password",
     "name": "192.168.1.100",

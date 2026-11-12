@@ -8,7 +8,7 @@ import hpilo
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo, ATTR_UPNP_FRIENDLY_NAME, ATTR_UPNP_MODEL_NAME
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_PROTOCOL, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
 from .sensor import SENSOR_TYPES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
