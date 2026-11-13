@@ -6,6 +6,7 @@
   ],
   "config_flow": true,
   "documentation": "https://github.com/chkuendig/hass-hp_ilo-beta",
+  "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/chkuendig/hass-hp_ilo-beta/issues",
   "loggers": [
@@ -20,5 +21,5 @@
       "manufacturer": "Hewlett Packard Enterprise"
     }
   ],
-  "version": "0.1.0"
+  "version": "2026.11.1"
 }

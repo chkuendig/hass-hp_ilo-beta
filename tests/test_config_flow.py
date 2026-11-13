@@ -65,6 +65,13 @@ async def test_manual_flow_success(hass, mock_hpilo):
     assert result["data"][CONF_USERNAME] == "Administrator"
     assert result["data"][CONF_PASSWORD] == "test_password"
 
+    # The flow's connection uses the same explicit timeout as the coordinator.
+    import hpilo
+
+    from custom_components.hp_ilo.coordinator import ILO_TIMEOUT
+
+    assert hpilo.Ilo.call_args.kwargs["timeout"] == ILO_TIMEOUT
+
 
 @pytest.mark.asyncio
 async def test_manual_flow_auth_error(hass, mock_hpilo_auth_error):

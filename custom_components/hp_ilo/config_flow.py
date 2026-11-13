@@ -2,14 +2,16 @@
 import ipaddress
 import logging
 from urllib.parse import urlparse
+from functools import partial
 import voluptuous as vol
 import hpilo 
 
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo, ATTR_UPNP_FRIENDLY_NAME, ATTR_UPNP_MODEL_NAME
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_DESCRIPTION, ATTR_CONFIGURATION_URL, CONF_PORT, CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
 from .sensor import SENSOR_TYPES, DOMAIN
+from .coordinator import ILO_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +55,7 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "model": device.model,
             "host": device.host[0],
         }
-    async def async_step_ssdp(self, discovery_info: SsdpServiceInfo) -> FlowResult:
+    async def async_step_ssdp(self, discovery_info: SsdpServiceInfo) -> ConfigFlowResult:
         """Handle a discovered HP iLO device."""
         _LOGGER.info(
                 "discovery_info : %s.",
@@ -180,12 +182,17 @@ class HpIloFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                self.ilo = hpilo.Ilo(
-                    hostname=self.config[CONF_HOST],
-                    port=int(self.config[CONF_PORT]),
-                    login=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD]
-                ) 
+                # hpilo.Ilo() probes PATH for curl/openssl, so build it off the loop.
+                self.ilo = await self.hass.async_add_executor_job(
+                    partial(
+                        hpilo.Ilo,
+                        hostname=self.config[CONF_HOST],
+                        port=int(self.config[CONF_PORT]),
+                        login=user_input[CONF_USERNAME],
+                        password=user_input[CONF_PASSWORD],
+                        timeout=ILO_TIMEOUT,
+                    )
+                )
                 # Verify connection and get serial number for unique_id
                 host_data = await self.hass.async_add_executor_job(
                     self.ilo.get_host_data

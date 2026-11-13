@@ -20,6 +20,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Update interval - all entities will share this single refresh cycle
 UPDATE_INTERVAL = timedelta(seconds=60)
+# Per-request socket timeout for python-hpilo. Its default (60 s) equals the
+# update interval, so a hung TLS handshake could stall an executor thread
+# for a whole cycle and block shutdown.
+ILO_TIMEOUT = 20
 
 
 @dataclass
@@ -62,7 +66,6 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
         entry: ConfigEntry,
     ) -> None:
         """Initialize the coordinator."""
-        self.config_entry = entry
         self.host = entry.data["host"]
         self.port = int(entry.data["port"])
         self.username = entry.data["username"]
@@ -71,6 +74,7 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"HP iLO ({self.host})",
             update_interval=UPDATE_INTERVAL,
         )
@@ -121,6 +125,7 @@ class HpIloDataUpdateCoordinator(DataUpdateCoordinator[HpIloData]):
             login=self.username,
             password=self.password,
             port=self.port,
+            timeout=ILO_TIMEOUT,
         )
         
         data = HpIloData(ilo=ilo)
