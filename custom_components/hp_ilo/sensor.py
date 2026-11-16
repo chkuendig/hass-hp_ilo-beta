@@ -59,6 +59,30 @@ DEFAULT_NAME = "HP ILO"
 # are skipped rather than extrapolated, so the counter never jumps.
 MAX_INTEGRATION_GAP = timedelta(minutes=5)
 
+
+def _numeric_or_none(value: Any) -> int | float | None:
+    """Return value if it is a finite number, otherwise None.
+
+    iLO reports "N/A" (or another non numeric string) for a sensor that cannot be
+    read at the moment. Home Assistant refuses a non numeric state on a sensor with
+    a numeric device class or state class, so such a reading must become unknown.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        try:
+            value = int(value)
+        except ValueError:
+            try:
+                value = float(value)
+            except ValueError:
+                return None
+    if not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
 SENSOR_TYPES = {
     "server_name": ["Server Name", "get_server_name"],
     "server_fqdn": ["Server FQDN", "get_server_fqdn"],
@@ -282,9 +306,9 @@ class HpIloTemperatureSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sens
                 if 'currentreading' in sensor_data:
                     # currentreading is typically a tuple like (25, 'Celsius')
                     reading = sensor_data['currentreading']
-                    if isinstance(reading, (list, tuple)) and len(reading) > 0:
-                        return reading[0]
-                    return reading
+                    if isinstance(reading, (list, tuple)):
+                        reading = reading[0] if reading else None
+                    return _numeric_or_none(reading)
         return None
 
 
@@ -323,9 +347,9 @@ class HpIloFanSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], SensorEntity
                 if 'speed' in sensor_data:
                     # speed is typically a tuple like (28, 'Percentage')
                     speed = sensor_data['speed']
-                    if isinstance(speed, (list, tuple)) and len(speed) > 0:
-                        return speed[0]
-                    return speed
+                    if isinstance(speed, (list, tuple)):
+                        speed = speed[0] if speed else None
+                    return _numeric_or_none(speed)
         return None
 
 
@@ -387,11 +411,9 @@ class HpIloPowerReadingSensor(CoordinatorEntity[HpIloDataUpdateCoordinator], Sen
             return None
 
         reading = self.coordinator.data.power_readings.get(self._reading_key)
-        if reading is None:
-            return None
-        if isinstance(reading, (list, tuple)) and len(reading) > 0:
-            return reading[0]
-        return reading
+        if isinstance(reading, (list, tuple)):
+            reading = reading[0] if reading else None
+        return _numeric_or_none(reading)
 
 
 class HpIloEnergySensor(CoordinatorEntity[HpIloDataUpdateCoordinator], RestoreSensor):
