@@ -83,6 +83,7 @@ def _numeric_or_none(value: Any) -> int | float | None:
         return None
     return value
 
+
 SENSOR_TYPES = {
     "server_name": ["Server Name", "get_server_name"],
     "server_fqdn": ["Server FQDN", "get_server_fqdn"],
@@ -479,13 +480,10 @@ class HpIloEnergySensor(CoordinatorEntity[HpIloDataUpdateCoordinator], RestoreSe
         reading = self.coordinator.data.power_readings.get("present_power_reading")
         if isinstance(reading, (list, tuple)):
             reading = reading[0] if reading else None
-        try:
-            power = float(reading)
-        except (TypeError, ValueError):
+        power = _numeric_or_none(reading)
+        if power is None or power < 0:
             return None
-        if not math.isfinite(power) or power < 0:
-            return None
-        return power
+        return float(power)
 
     def _integrate(self) -> None:
         """Add the energy since the previous sample (trapezoidal rule)."""

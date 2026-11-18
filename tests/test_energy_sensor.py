@@ -119,7 +119,10 @@ async def test_energy_unreachable_ilo(hass, mock_hpilo, freezer):
     )
 
 
-async def test_energy_never_decreases_on_invalid_reading(hass, mock_hpilo, freezer):
+@pytest.mark.parametrize("invalid", [None, "N/A", -5, float("nan"), True])
+async def test_energy_never_decreases_on_invalid_reading(
+    hass, mock_hpilo, freezer, invalid
+):
     """Invalid readings are ignored and never count as zero."""
     entity_id = await _setup(hass, mock_hpilo, watts=100)
     await _advance(hass, freezer)
@@ -127,7 +130,7 @@ async def test_energy_never_decreases_on_invalid_reading(hass, mock_hpilo, freez
 
     mock_hpilo.get_power_readings.return_value = {
         **MOCK_ILO_POWER_READINGS,
-        "present_power_reading": (None, "Watts"),
+        "present_power_reading": (invalid, "Watts"),
     }
     await _advance(hass, freezer)
     assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
